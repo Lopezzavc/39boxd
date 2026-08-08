@@ -29,15 +29,19 @@ export function GameSearch({ initialQuery }: { initialQuery: string }) {
   }, [initialQuery]);
 
   if (isPending) {
-    return <p className="text-sm text-muted-foreground">Buscando...</p>;
+    return <p className="text-sm text-muted-foreground dark:text-neutral-400">Buscando...</p>;
   }
 
   if (error) {
-    return <p className="text-sm text-red-500">{error}</p>;
+    return <p className="text-sm text-red-500 dark:text-red-400">{error}</p>;
   }
 
   if (!initialQuery.trim()) {
-    return <p className="text-sm text-muted-foreground">Usa la barra de búsqueda para encontrar juegos.</p>;
+    return (
+      <p className="text-sm text-muted-foreground dark:text-neutral-400">
+        Usa la barra de búsqueda para encontrar juegos.
+      </p>
+    );
   }
 
   return (

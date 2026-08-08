@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { logout } from "@/lib/actions/auth";
-import GlassSurface from '@/components/GlassSurface'
+import LiquidGlass from "@/components/LiquidGlass";
 
 const categories = [
   { label: "Juegos", href: "/games" },
@@ -53,35 +53,30 @@ export function Header() {
 
   return (
     <div className="sticky top-4 z-50 mx-auto max-w-4xl px-4">
-      <GlassSurface
+      <LiquidGlass
         width="100%"
         height={64}
         borderRadius={32}
-        borderWidth={0}
-        brightness={50}
-        opacity={1}
-        blur={5}
-        displace={3}
-        backgroundOpacity={0.1}
-        saturation={1}
-        distortionScale={-150}
-        redOffset={0}
-        greenOffset={10}
-        blueOffset={20}
-        xChannel="R"
-        yChannel="B"
-        mixBlendMode="difference"
+        surfaceType="convex_squircle"
+        bezelWidth={25}
+        glassThickness={50}
+        refractiveIndex={1.5}
+        refractionScale={1.5}
+        specularOpacity={0.5}
+        blur={1.5}
+        tintColor="rgb(40, 40, 40)"
+        tintOpacity={0.6}
         className="!justify-start px-6"
       >
         <div className="flex w-full min-w-0 items-center gap-8">
           <span className="shrink-0 text-sm font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
-            39boxd
+            DATA
           </span>
 
           <nav ref={navRef} className="relative flex shrink-0 gap-6">
             {indicator && (
-              <span
-                className="absolute rounded-full bg-neutral-900/10 transition-all duration-300 ease-out dark:bg-neutral-50/10"
+              <div
+                className="absolute rounded-full bg-white/15 dark:bg-white/10 transition-all duration-300 ease-out"
                 style={{
                   left: indicator.left,
                   top: indicator.top,
@@ -131,7 +126,7 @@ export function Header() {
             </Button>
           </form>
         </div>
-      </GlassSurface>
+      </LiquidGlass>
     </div>
   );
 }

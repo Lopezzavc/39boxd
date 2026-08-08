@@ -48,25 +48,25 @@ export function GameResultCard({ game }: { game: IgdbGame }) {
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="relative aspect-[3/4] w-full overflow-hidden rounded-md bg-neutral-100">
+      <div className="relative aspect-[3/4] w-full overflow-hidden rounded-md bg-neutral-100 dark:bg-neutral-800">
         {coverUrl ? (
           <Image
             src={coverUrl} alt={game.name} fill sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, 25vw" className="object-cover"
           />
         ) : (
-          <div className="flex h-full items-center justify-center text-xs text-neutral-400">
+          <div className="flex h-full items-center justify-center text-xs text-neutral-400 dark:text-neutral-500">
             Sin portada
           </div>
         )}
       </div>
 
-      <p className="line-clamp-2 text-sm font-medium">{game.name}</p>
+      <p className="line-clamp-2 text-sm font-medium text-neutral-900 dark:text-neutral-50">{game.name}</p>
 
       <Select value={status} onValueChange={setStatus}>
-        <SelectTrigger className="h-8 text-xs">
+        <SelectTrigger className="h-8 text-xs dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100">
           <SelectValue />
         </SelectTrigger>
-        <SelectContent>
+        <SelectContent className="dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100">
           {STATUS_OPTIONS.map((opt) => (
             <SelectItem key={opt.value} value={opt.value}>
               {opt.label}
@@ -80,11 +80,12 @@ export function GameResultCard({ game }: { game: IgdbGame }) {
         variant={added ? "secondary" : "default"}
         disabled={isPending || added}
         onClick={handleAdd}
+        className="dark:disabled:opacity-50"
       >
         {added ? "Agregado" : isPending ? "Agregando..." : "Agregar"}
       </Button>
 
-      {error && <p className="text-xs text-red-500">{error}</p>}
+      {error && <p className="text-xs text-red-500 dark:text-red-400">{error}</p>}
     </div>
   );
 }

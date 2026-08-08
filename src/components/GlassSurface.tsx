@@ -12,6 +12,8 @@ export interface GlassSurfaceProps {
   blur?: number;
   displace?: number;
   backgroundOpacity?: number;
+  tintColor?: string; // formato rgb, ej. "rgb(26, 26, 46)"
+  tintOpacity?: number; // 0-1, intensidad del tinte
   saturation?: number;
   distortionScale?: number;
   redOffset?: number;
@@ -53,6 +55,8 @@ const GlassSurface: React.FC<GlassSurfaceProps> = ({
   blur = 11,
   displace = 0,
   backgroundOpacity = 0,
+  tintColor = 'rgb(255, 255, 255)',
+  tintOpacity = 0,
   saturation = 1,
   distortionScale = -180,
   redOffset = 0,
@@ -158,20 +162,6 @@ const GlassSurface: React.FC<GlassSurfaceProps> = ({
   }, []);
 
   useEffect(() => {
-    if (!containerRef.current) return;
-
-    const resizeObserver = new ResizeObserver(() => {
-      setTimeout(updateDisplacementMap, 0);
-    });
-
-    resizeObserver.observe(containerRef.current);
-
-    return () => {
-      resizeObserver.disconnect();
-    };
-  }, []);
-
-  useEffect(() => {
     setTimeout(updateDisplacementMap, 0);
   }, [width, height]);
 
@@ -204,6 +194,8 @@ const GlassSurface: React.FC<GlassSurfaceProps> = ({
     borderRadius: `${borderRadius}px`,
     '--glass-frost': backgroundOpacity,
     '--glass-saturation': saturation,
+    '--glass-tint-color': tintColor,
+    '--glass-tint-opacity': tintOpacity,
     '--filter-id': `url(#${filterId})`
   } as React.CSSProperties;
 
