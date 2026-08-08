@@ -61,10 +61,10 @@ export function Header() {
         brightness={50}
         opacity={1}
         blur={5}
-        displace={0}
+        displace={3}
         backgroundOpacity={0.1}
         saturation={1}
-        distortionScale={-180}
+        distortionScale={-150}
         redOffset={0}
         greenOffset={10}
         blueOffset={20}
