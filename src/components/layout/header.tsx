@@ -21,11 +21,19 @@ const headerPreset = {
   height: 64,
   radius: 32,
   bezelWidth: 32,
-  glassThickness: 90,
+  glassThickness: 20,
   refractiveIndex: 1.35,
   bezelType: "convex_squircle",
   maxDisplacement: 220,
 };
+
+// Parámetros ajustables del efecto glass — edita aquí
+const HEADER_BLUR = 1;
+const HEADER_REFRACTION = 1;
+const HEADER_SPECULAR_OPACITY = 0.4;
+const HEADER_SPECULAR_SAT = 6;
+const HEADER_PROG_BLUR = 1;
+const HEADER_BG_OPACITY = 0;
 
 export function Header() {
   const pathname = usePathname();
@@ -69,10 +77,11 @@ export function Header() {
       <RefractionFilter
         id={HEADER_FILTER_ID}
         preset={headerPreset}
-        blur={5}
-        scaleRatio={0.9}
-        specularOpacity={0.4}
-        specularSaturation={6}
+        blur={HEADER_BLUR}
+        scaleRatio={HEADER_REFRACTION}
+        specularOpacity={HEADER_SPECULAR_OPACITY}
+        specularSaturation={HEADER_SPECULAR_SAT}
+        progressiveBlurStrength={HEADER_PROG_BLUR}
       />
 
       <div
@@ -82,8 +91,8 @@ export function Header() {
           borderRadius: 32,
           backdropFilter: `url(#${HEADER_FILTER_ID})`,
           WebkitBackdropFilter: `url(#${HEADER_FILTER_ID})`,
-          background: "rgba(255,255,255,0.1)",
-          boxShadow: "0 8px 24px rgba(0,0,0,0.08)",
+          background: `rgba(255,255,255, ${HEADER_BG_OPACITY})`,
+          boxShadow: "0 8px 24px rgba(0,0,0,0)",
         }}
       >
         <span className="shrink-0 text-sm font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">

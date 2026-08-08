@@ -116,7 +116,7 @@ function generateSpecularPNG(w, h, params) {
         0,
         255
       );
-      const idx = (w * y + x) << 2;
+      const idx = (w * y + x) << 2;p
       png.data[idx] = val;
       png.data[idx + 1] = val;
       png.data[idx + 2] = val;

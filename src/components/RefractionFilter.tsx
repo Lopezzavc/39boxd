@@ -3,17 +3,6 @@
 import React from "react";
 import manifest from "@/generated/refraction-manifest.json";
 
-function stableHash(params: any) {
-  // Debe coincidir con hashParams del script
-  const s = JSON.stringify(params);
-  let h = 0;
-  for (let i = 0; i < s.length; i++) {
-    h = (h << 5) - h + s.charCodeAt(i);
-    h |= 0;
-  }
-  return Math.abs(h).toString(16).slice(0, 12);
-}
-
 type Props = {
   id: string;
   preset: {
@@ -27,11 +16,11 @@ type Props = {
     bezelType?: string;
     maxDisplacement?: number;
   };
-  blur?: number | number;
+  blur?: number; // base blur
   scaleRatio?: number; // 0..1
   specularOpacity?: number; // 0..1
-  specularSaturation?: number; // multiplier
-  withSvgWrapper?: boolean;
+  specularSaturation?: number; // typical range 0..2 (1 = identity)
+  progressiveBlurStrength?: number; // 0..10 (multiplier for layered blurs)
 };
 
 export const RefractionFilter: React.FC<Props> = ({
@@ -40,57 +29,66 @@ export const RefractionFilter: React.FC<Props> = ({
   blur = 1,
   scaleRatio = 1,
   specularOpacity = 0.4,
-  specularSaturation = 6,
+  specularSaturation = 1,
+  progressiveBlurStrength = 1,
 }) => {
-  // calc key exactly like the generator
-  const key = ((): string => {
+  const key = (() => {
     for (const k of Object.keys(manifest)) {
       const entry = (manifest as any)[k];
       if (entry?.params?.name === preset.name) return k;
     }
-    // fallback: first available
     return Object.keys(manifest)[0] ?? "";
   })();
-  
+
   const entry = (manifest as any)[key];
-  if (!key || !entry) {
-    return null;
-  }
+  if (!key || !entry) return null;
 
   const dispUrl = entry.displacement;
   const specUrl = entry.specular;
   const maxDisp = entry.maxDisplacement ?? preset.maxDisplacement ?? 200;
-
-  // scale for feDisplacementMap. feDisplacementMap "scale" is in CSS px relative units; we map scaleRatio 0..1 to [0..maxDisp].
   const scale = Number(scaleRatio) * Number(maxDisp);
 
-  // Saturation as feColorMatrix: approximate by scaling RGB by factor (simple approach)
-  // A better approach is to create an HSL-based map on generation time; for now apply feColorMatrix to specular.
-  // We will create a color matrix that increases saturation (basic approximation)
-  const sat = specularSaturation;
+  // Saturation matrix (standard approach): s=1 identity, 0=grayscale, >1 oversaturated
+  const s = Number(specularSaturation);
+  const Lr = 0.2126;
+  const Lg = 0.7152;
+  const Lb = 0.0722;
+  const a = (1 - s) * Lr + s;
+  const b = (1 - s) * Lg;
+  const c = (1 - s) * Lb;
 
-  // Color matrix for saturation (approx): use luminance matrix + scale blends
-  const a = 0.213 + 0.787 * sat;
-  const b = 0.715 - 0.715 * sat;
-  const c = 0.072 - 0.072 * sat;
+  // progressive blur: 3 layers with increasing stdDeviation
+  const blurBase = Number(blur) || 0;
+  const pb = Number(progressiveBlurStrength) || 1;
+  const blur1 = blurBase * Math.max(0.125, pb * 0.5);
+  const blur2 = blurBase * Math.max(0.5, pb * 1.0);
+  const blur3 = blurBase * Math.max(1.0, pb * 2.0);
 
   return (
     <svg style={{ position: "absolute", width: 0, height: 0 }} aria-hidden>
       <defs>
         <filter id={id} x="-50%" y="-50%" width="200%" height="200%" colorInterpolationFilters="sRGB">
-          {/* feImage for displacement */}
-          <feImage xlinkHref={dispUrl} result="disp" />
+          <feImage href={dispUrl} result="disp" />
+          <feImage href={specUrl} result="spec" />
 
-          {/* feImage for specular */}
-          <feImage xlinkHref={specUrl} result="spec" />
+          <feGaussianBlur in="SourceGraphic" stdDeviation={blur1} result="b1" />
+          <feGaussianBlur in="SourceGraphic" stdDeviation={blur2} result="b2" />
+          <feGaussianBlur in="SourceGraphic" stdDeviation={blur3} result="b3" />
+          <feMerge result="blurred">
+            <feMergeNode in="b1" />
+            <feMergeNode in="b2" />
+            <feMergeNode in="b3" />
+          </feMerge>
 
-          {/* Blur the source (background) before displacement */}
-          <feGaussianBlur in="SourceGraphic" stdDeviation={blur} result="blurred" />
+          <feDisplacementMap
+            in="blurred"
+            in2="disp"
+            scale={scale}
+            xChannelSelector="R"
+            yChannelSelector="G"
+            result="refracted"
+          />
 
-          {/* Apply displacement: in2=disp, use channels R/G */}
-          <feDisplacementMap in="blurred" in2="disp" scale={scale} xChannelSelector="R" yChannelSelector="G" result="refracted" />
-
-          {/* Adjust specular saturation using feColorMatrix (approx) and opacity via feComponentTransfer */}
           <feColorMatrix
             in="spec"
             type="matrix"
@@ -101,10 +99,8 @@ export const RefractionFilter: React.FC<Props> = ({
             <feFuncA type="table" tableValues={`0 ${specularOpacity}`} />
           </feComponentTransfer>
 
-          {/* Composite specular over refracted */}
           <feBlend mode="screen" in="refracted" in2="specAlpha" result="out" />
-
-          <feComposite in="out" in2="SourceGraphic" operator="over" />
+          <feComposite in="out" in2="SourceGraphic" operator="over" result="final" />
         </filter>
       </defs>
     </svg>
