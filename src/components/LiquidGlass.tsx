@@ -101,15 +101,15 @@ export default function LiquidGlass({
       ref={containerRef}
       className={className}
       style={{
+        position: "relative",
+        overflow: "hidden",
+        boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
         ...style,
         width: typeof width === "number" ? `${width}px` : width,
         height: typeof height === "number" ? `${height}px` : height,
         borderRadius: `${borderRadius}px`,
-        position: "relative",
-        overflow: "hidden",
         backdropFilter: `url(#${filterId})`,
         WebkitBackdropFilter: `url(#${filterId})`,
-        boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
       }}
     >
       <svg width="0" height="0" style={{ position: "absolute" }}>

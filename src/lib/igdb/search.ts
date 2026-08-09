@@ -6,10 +6,9 @@ export async function searchIgdbGames(query: string): Promise<IgdbGame[]> {
 
   const body = `
     search "${sanitized}";
-    fields id, name, summary, first_release_date, cover.url,
-      involved_companies.company.name, involved_companies.developer,
-      involved_companies.publisher, platforms.name, genres.name, total_rating;
-    limit 20;
+    fields id, name, cover.url, total_rating;
+    where total_rating != null;
+    limit 100;
   `;
 
   return igdbQuery<IgdbGame[]>("games", body);

@@ -35,9 +35,9 @@ export function GameResultCard({ game }: { game: IgdbGame }) {
     startTransition(async () => {
       try {
         await addMediaEntry({
-            igdbGameId: game.id,
-            status: status as any,
-            isFavorite: false
+          igdbGameId: game.id,
+          status: status as any,
+          isFavorite: false,
         });
         setAdded(true);
       } catch {
