@@ -1,26 +1,40 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
-import { LogOut } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
-import { logout } from "@/lib/actions/auth";
+import { X } from "lucide-react";
 import LiquidGlass from "@/components/LiquidGlass";
 import { Spring } from "@/lib/springUtils";
+import { SearchModal } from "@/components/search/SearchModal";
 
 const categories = [
+  { label: "Home", href: "/" },
   { label: "Juegos", href: "/games" },
   { label: "Películas", href: "/movies" },
   { label: "Música", href: "/music" },
+  { label: "Stats", href: "/stats" },
 ];
+
+interface SearchResult {
+  id: string | number;
+  title: string;
+  image?: string;
+  type: "game" | "movie" | "music";
+}
 
 export function Header() {
   const pathname = usePathname();
-  const router = useRouter();
-  const [query, setQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchCategory, setSearchCategory] = useState<"game" | "movie" | "music">("game");
+  const [results, setResults] = useState<SearchResult[]>([]);
+  const [loading, setLoading] = useState(false);
+
   const navRef = useRef<HTMLDivElement>(null);
   const linkRefs = useRef<Record<string, HTMLAnchorElement | null>>({});
+  const debounceRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
 
   const springsRef = useRef({
     left: new Spring(0, 260, 14),
@@ -33,8 +47,71 @@ export function Header() {
 
   const [, forceRender] = useState(0);
 
-  const activeHref =
-    categories.find((c) => pathname.startsWith(c.href))?.href ?? "/games";
+  const activeHref = (() => {
+    if (pathname === "/" || pathname === "/home") return "/";
+    const match = categories.find(
+      (c) => c.href !== "/" && pathname.startsWith(c.href)
+    );
+    return match?.href ?? "/";
+  })();
+
+  const defaultCategory = pathname.startsWith("/movies")
+    ? "movie"
+    : pathname.startsWith("/music")
+    ? "music"
+    : pathname.startsWith("/games")
+    ? "game"
+    : "all";
+
+  const performSearch = useCallback(async () => {
+    if (!searchQuery.trim()) {
+      setResults([]);
+      return;
+    }
+    if (searchCategory !== "game") {
+      setResults([
+        {
+          id: "placeholder",
+          title:
+            "Próximamente: búsqueda de " +
+            (searchCategory === "movie" ? "películas/series" : "música"),
+          type: searchCategory,
+        },
+      ]);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/igdb-search?q=${encodeURIComponent(searchQuery)}`);
+      const data = await res.json();
+      const games = (data.results || data).map((item: any) => ({
+        id: item.id,
+        title: item.name,
+        image: item.cover?.url?.replace("t_thumb", "t_cover_big") || "",
+        type: "game" as const,
+      }));
+      setResults(games);
+    } catch (err) {
+      console.error(err);
+      setResults([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [searchQuery, searchCategory]);
+
+  useEffect(() => {
+    if (!isSearchOpen) return;
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      performSearch();
+    }, 300);
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [searchQuery, searchCategory, isSearchOpen, performSearch]);
 
   function getTargetForActive() {
     const activeEl = linkRefs.current[activeHref];
@@ -104,116 +181,160 @@ export function Header() {
         rafRef.current = null;
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeHref]);
 
-  function handleSearch(e: React.FormEvent) {
-    e.preventDefault();
-    const base = pathname.startsWith("/movies")
-      ? "/movies"
-      : pathname.startsWith("/music")
-        ? "/music"
-        : "/games";
-    router.push(`${base}?q=${encodeURIComponent(query)}`);
+  function handleInputClick() {
+    if (!isSearchOpen) {
+      setSearchCategory(
+        defaultCategory === "all" ? "game" : (defaultCategory as "game" | "movie" | "music")
+      );
+      setIsSearchOpen(true);
+    }
+  }
+
+  function handleCloseModal() {
+    setIsSearchOpen(false);
+    setSearchQuery("");
+    setResults([]);
+  }
+
+  function handleCategoryChange(val: string) {
+    setSearchCategory(val as "game" | "movie" | "music");
   }
 
   const s = springsRef.current;
 
   return (
-    <div className="sticky top-4 z-50 mx-auto flex max-w-4xl items-center justify-center gap-3 px-4">
-      <LiquidGlass
-        width="fit-content"
-        height={50}
-        borderRadius={50 / 2}
-        surfaceType="convex_squircle"
-        bezelWidth={25}
-        glassThickness={50}
-        refractiveIndex={1.5}
-        refractionScale={1.5}
-        specularOpacity={0.5}
-        blur={1.5}
-        tintColor="rgb(40, 40, 40)"
-        tintOpacity={0.6}
-        className="!justify-start pl-6 pr-[10px]"
-      >
-        <div className="flex items-center">
-          <div className="flex items-center gap-8">
-            <span className="shrink-0 text-sm font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
-              DATA
-            </span>
-
-            <nav ref={navRef} className="relative flex shrink-0 gap-6">
-              {initializedRef.current && (
-                <div
-                  className="absolute rounded-full bg-white/15 backdrop-blur-md dark:bg-white/10"
-                  style={{
-                    left: s.left.value,
-                    top: s.top.value,
-                    width: s.width.value,
-                    height: s.height.value,
-                    zIndex: 0,
-                  }}
-                />
-              )}
-
-              {categories.map((c) => {
-                const active = pathname.startsWith(c.href);
-                return (
-                  <Link
-                    key={c.href}
-                    href={c.href}
-                    ref={(el) => {
-                      linkRefs.current[c.href] = el;
-                    }}
-                    className={
-                      active
-                        ? "relative z-10 text-sm font-medium text-neutral-900 dark:text-neutral-50"
-                        : "relative z-10 text-sm font-medium text-neutral-500 transition-colors hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-50"
-                    }
-                  >
-                    {c.label}
-                  </Link>
-                );
-              })}
-            </nav>
-          </div>
-
-          <form onSubmit={handleSearch} className="ml-12 w-56 shrink-0">
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Buscar..."
-              className="rounded-full border-neutral-200 bg-neutral-50 text-sm placeholder:text-neutral-400 focus-visible:ring-1 focus-visible:ring-neutral-900 dark:border-neutral-800 dark:bg-neutral-800 dark:placeholder:text-neutral-500 dark:focus-visible:ring-neutral-50"
-            />
-          </form>
-        </div>
-      </LiquidGlass>
-
-      <LiquidGlass
-        width={50}
-        height={50}
-        borderRadius={25}
-        surfaceType="convex_squircle"
-        bezelWidth={25}
-        glassThickness={50}
-        refractiveIndex={1.5}
-        refractionScale={1.5}
-        specularOpacity={0.5}
-        blur={1.5}
-        tintColor="rgb(40, 40, 40)"
-        tintOpacity={0.6}
-        className="!justify-center"
-      >
-        <form action={logout} className="flex h-full w-full items-center justify-center">
-          <button
-            type="submit"
-            aria-label="Cerrar sesión"
-            className="flex h-full w-full items-center justify-center text-neutral-700 transition-colors hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-neutral-50"
+    <>
+      <div className="sticky top-4 z-50 w-full">
+        <div className="flex justify-center">
+          <LiquidGlass
+            width="fit-content"
+            height={50}
+            borderRadius={50 / 2}
+            surfaceType="convex_squircle"
+            bezelWidth={25}
+            glassThickness={50}
+            refractiveIndex={1.5}
+            refractionScale={1.5}
+            specularOpacity={0.5}
+            blur={1.5}
+            tintColor="rgb(40, 40, 40)"
+            tintOpacity={0.6}
+            className="!justify-start items-center pl-6 pr-[9.3px]"
           >
-            <LogOut className="h-5 w-5" />
-          </button>
-        </form>
-      </LiquidGlass>
-    </div>
+            <div className="flex items-center translate-y-[0.5px]">
+              <div className="flex items-center gap-7">
+                <div className="flex items-center gap-3 translate-y-[0px]">
+                  <img
+                    src="/assets/iconwhite.webp"
+                    alt="App icon"
+                    className="mr-0 h-7 w-7"
+                  />
+                  <span className="shrink-0 text-sm font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
+                    DATA
+                  </span>
+                </div>
+
+                <nav ref={navRef} className="relative flex shrink-0 gap-6">
+                  {initializedRef.current && (
+                    <div
+                      className="absolute rounded-full bg-white/15 backdrop-blur-md dark:bg-white/10"
+                      style={{
+                        left: s.left.value,
+                        top: s.top.value,
+                        width: s.width.value,
+                        height: s.height.value,
+                        zIndex: 0,
+                      }}
+                    />
+                  )}
+
+                  {categories.map((c) => {
+                    const active =
+                      c.href === "/"
+                        ? pathname === "/" || pathname === "/home"
+                        : pathname.startsWith(c.href);
+                    return (
+                      <Link
+                        key={c.href}
+                        href={c.href}
+                        ref={(el) => {
+                          linkRefs.current[c.href] = el;
+                        }}
+                        className={
+                          active
+                            ? "relative z-10 text-sm font-medium text-neutral-900 dark:text-neutral-50"
+                            : "relative z-10 text-sm font-medium text-neutral-500 transition-colors hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-50"
+                        }
+                      >
+                        {active && (
+                          <span
+                            className="absolute inset-0 flex items-center justify-center text-sm font-medium blur-[2px] opacity-20 text-neutral-900 dark:text-neutral-50 pointer-events-none select-none"
+                            aria-hidden="true"
+                          >
+                            {c.label}
+                          </span>
+                        )}
+                        {c.label}
+                      </Link>
+                    );
+                  })}
+                </nav>
+              </div>
+
+              <div className="ml-12 w-56 shrink-0">
+                <Input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onClick={handleInputClick}
+                  placeholder="Buscar..."
+                  className="rounded-full border-neutral-200 bg-neutral-50 text-sm placeholder:text-neutral-400 focus-visible:ring-1 focus-visible:ring-neutral-900 dark:border-neutral-800 dark:bg-neutral-800 dark:placeholder:text-neutral-500 dark:focus-visible:ring-neutral-50"
+                />
+              </div>
+            </div>
+          </LiquidGlass>
+        </div>
+
+        {isSearchOpen && (
+          <div className="absolute right-4 top-0 flex items-center h-full">
+            <LiquidGlass
+              width={50}
+              height={50}
+              borderRadius={50 / 2}
+              surfaceType="convex_squircle"
+              bezelWidth={25}
+              glassThickness={50}
+              refractiveIndex={1.5}
+              refractionScale={1.5}
+              specularOpacity={0.5}
+              blur={1.5}
+              tintColor="rgb(40, 40, 40)"
+              tintOpacity={0.6}
+              className="!justify-center items-center cursor-pointer"
+            >
+              <button
+                onClick={handleCloseModal}
+                aria-label="Cerrar búsqueda"
+                className="flex items-center justify-center w-full h-full"
+              >
+                <X className="w-6 h-6 text-neutral-200" />
+              </button>
+            </LiquidGlass>
+          </div>
+        )}
+      </div>
+
+      <SearchModal
+        isOpen={isSearchOpen}
+        onClose={handleCloseModal}
+        query={searchQuery}
+        results={results}
+        loading={loading}
+        category={searchCategory}
+        onCategoryChange={handleCategoryChange}
+        defaultCategory={defaultCategory}
+      />
+    </>
   );
 }
