@@ -3,7 +3,12 @@
 import { notFound } from "next/navigation";
 import LiquidGlass from "@/components/LiquidGlass";
 import { getTvdbIdFromTmdb, getTvdbGallery, getTvdbEpisodeStills } from "@/lib/tvdb";
-import { getOmdbRatings } from "@/lib/omdb";
+import { getOmdbRatings, getOmdbSeasonRatings, type EpisodeRating } from "@/lib/omdb";
+import EpisodeRatingsHeatmap, {
+  type HeatmapEpisodeCell,
+  type HeatmapSeasonRow,
+} from "./EpisodeRatingsHeatmap";
+import MovieGallery from "./MovieGallery";
 
 // ────────────────────────────────────────────────────────────────────────────
 // Iconografía mínima
@@ -72,6 +77,12 @@ type Movie = {
   dateAdded: string | null;
   dateWatched: string | null;
 };
+
+// Temporada regular de TMDB (excluye specials = season 0)
+type SeasonMeta = { number: number; episodeCount: number };
+
+// Estadísticas de TMDB por número de episodio (fallback de rating/votos)
+type TmdbEpisodeStats = { voteAverage: number; voteCount: number };
 
 // ────────────────────────────────────────────────────────────────────────────
 // Helpers de formato
@@ -176,6 +187,14 @@ function mapTmdbToMovie(data: any, mediaType: "movie" | "tv"): Movie {
   };
 }
 
+// Lista de temporadas regulares (excluye specials = season 0, y temporadas sin episodios)
+function getRegularSeasons(data: any): SeasonMeta[] {
+  const seasons: any[] = data.seasons || [];
+  return seasons
+    .filter((s) => s.season_number > 0 && s.episode_count > 0)
+    .map((s) => ({ number: s.season_number, episodeCount: s.episode_count }));
+}
+
 // TVDB da fotos reales; si algo falla (id no encontrado, API caída),
 // no rompe la página, simplemente se queda con la galería de TMDB.
 async function getRealPhotoGallery(
@@ -205,6 +224,93 @@ async function getRealPhotoGallery(
   }
 }
 
+// Ratings de episodios de UNA temporada vía OMDb (usa el imdbId de la SERIE).
+// Si algo falla, no rompe la página.
+async function getSeasonEpisodeRatings(
+  seriesImdbId: string | null,
+  seasonNumber: number
+): Promise<EpisodeRating[]> {
+  if (!seriesImdbId) return [];
+  try {
+    return await getOmdbSeasonRatings(seriesImdbId, seasonNumber);
+  } catch {
+    return [];
+  }
+}
+
+// Fallback: rating (vote_average) y cantidad de votos (vote_count) por episodio
+// de UNA temporada, directo de TMDB (vote_average ya en escala 0-10, no %).
+// Se usa cuando OMDb no tiene el rating y/o los votos cargados todavía.
+async function getTmdbSeasonEpisodeStats(
+  tvId: string,
+  seasonNumber: number
+): Promise<Record<number, TmdbEpisodeStats>> {
+  try {
+    const res = await fetch(
+      `https://api.themoviedb.org/3/tv/${tvId}/season/${seasonNumber}?language=es`,
+      {
+        headers: { Authorization: `Bearer ${process.env.TMDB_ACCESS_TOKEN}` },
+        next: { revalidate: 3600 },
+      }
+    );
+    if (!res.ok) return {};
+    const data = await res.json();
+    const episodes: any[] = data.episodes || [];
+    const map: Record<number, TmdbEpisodeStats> = {};
+    for (const ep of episodes) {
+      map[ep.episode_number] = {
+        voteAverage: ep.vote_average || 0,
+        voteCount: ep.vote_count || 0,
+      };
+    }
+    return map;
+  } catch {
+    return {};
+  }
+}
+
+// Combina OMDb + fallback TMDB (por campo, no en bloque) y arma las filas
+// del heatmap, una por temporada, con el promedio de la temporada incluido.
+function buildSeasonRows(
+  seasons: SeasonMeta[],
+  episodeRatingsBySeason: EpisodeRating[][],
+  tmdbStatsBySeason: Record<number, TmdbEpisodeStats>[]
+): HeatmapSeasonRow[] {
+  return seasons.map((season, i) => {
+    const omdbEpisodes = episodeRatingsBySeason[i] ?? [];
+    const tmdbStats = tmdbStatsBySeason[i] ?? {};
+
+    const episodes: HeatmapEpisodeCell[] = omdbEpisodes.map((ep) => {
+      const stats = tmdbStats[ep.episode as keyof typeof tmdbStats];
+      const hasTmdbRating = typeof stats?.voteAverage === "number" && stats.voteAverage > 0;
+      const hasTmdbVotes = typeof stats?.voteCount === "number" && stats.voteCount > 0;
+
+      const ratingDisplay = ep.imdbRating ?? (hasTmdbRating ? stats!.voteAverage.toFixed(1) : null);
+      const votes = ep.imdbVotes ?? (hasTmdbVotes ? String(stats!.voteCount) : null);
+
+      const ratingNum = ratingDisplay !== null ? Number(ratingDisplay) : null;
+      const rating = ratingNum !== null && Number.isFinite(ratingNum) ? ratingNum : null;
+
+      return {
+        episode: ep.episode,
+        title: ep.title,
+        rating,
+        ratingDisplay,
+        votes,
+        ratingIsFallback: !ep.imdbRating && hasTmdbRating,
+        votesIsFallback: !ep.imdbVotes && hasTmdbVotes,
+      };
+    });
+
+    const validRatings = episodes.map((e) => e.rating).filter((r): r is number => r !== null);
+    const average = validRatings.length
+      ? validRatings.reduce((a, b) => a + b, 0) / validRatings.length
+      : null;
+
+    return { season: season.number, episodes, average };
+  });
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // Página
 // ────────────────────────────────────────────────────────────────────────────
@@ -222,11 +328,17 @@ export default async function MovieDetailPage({
   if (!data) notFound();
 
   const movie = mapTmdbToMovie(data, mediaType);
-  const [gallery, omdbRatings] = await Promise.all([
+  const regularSeasons = mediaType === "tv" ? getRegularSeasons(data) : [];
+
+  const [gallery, omdbRatings, episodeRatingsBySeason, tmdbStatsBySeason] = await Promise.all([
     getRealPhotoGallery(id, mediaType, movie.gallery),
     movie.imdbId ? getOmdbRatings(movie.imdbId).catch(() => null) : Promise.resolve(null),
+    Promise.all(regularSeasons.map((s) => getSeasonEpisodeRatings(movie.imdbId, s.number))),
+    Promise.all(regularSeasons.map((s) => getTmdbSeasonEpisodeStats(id, s.number))),
   ]);
   movie.gallery = gallery;
+
+  const seasonRows = buildSeasonRows(regularSeasons, episodeRatingsBySeason, tmdbStatsBySeason);
 
   const infoFields: { label: string; value: string }[] = [
     { label: "Director", value: movie.director },
@@ -473,15 +585,20 @@ export default async function MovieDetailPage({
               </div>
             </section>
 
+            {seasonRows.length > 0 && (
+              <section>
+                <h2 className={LABEL}>Calificaciones por temporada</h2>
+                <div className="mt-4">
+                  <EpisodeRatingsHeatmap seasons={seasonRows} />
+                </div>
+              </section>
+            )}
+
             {movie.gallery.length > 0 && (
               <section>
                 <h2 className={LABEL}>Galería</h2>
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  {movie.gallery.map((src) => (
-                    <div key={src} className="aspect-video overflow-hidden rounded-xl bg-white/5 ring-1 ring-white/[0.06]">
-                      <img src={src} alt="" className="h-full w-full object-cover" />
-                    </div>
-                  ))}
+                <div className="mt-4">
+                  <MovieGallery images={movie.gallery} />
                 </div>
               </section>
             )}

@@ -25,6 +25,12 @@ interface SearchResult {
   media_type?: "movie" | "tv";
 }
 
+interface GalleryEventDetail {
+  isOpen: boolean;
+  currentIndex: number;
+  total: number;
+}
+
 export function Header() {
   const pathname = usePathname();
   const router = useRouter();
@@ -34,6 +40,12 @@ export function Header() {
   const [searchCategory, setSearchCategory] = useState<"game" | "movie" | "music">("game");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
+
+  const [galleryState, setGalleryState] = useState<GalleryEventDetail>({
+    isOpen: false,
+    currentIndex: 0,
+    total: 0,
+  });
 
   const navRef = useRef<HTMLDivElement>(null);
   const linkRefs = useRef<Record<string, HTMLAnchorElement | null>>({});
@@ -50,7 +62,15 @@ export function Header() {
 
   const [, forceRender] = useState(0);
 
-  // Detectar si venimos de un redirect para abrir búsqueda en /games
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<GalleryEventDetail>).detail;
+      setGalleryState(detail);
+    };
+    document.addEventListener("gallery-state", handler);
+    return () => document.removeEventListener("gallery-state", handler);
+  }, []);
+
   useEffect(() => {
     const openSearch = searchParams.get("openSearch");
     if (openSearch === "true") {
@@ -60,7 +80,6 @@ export function Header() {
     }
   }, [searchParams]);
 
-  // Sincronizar la categoría del modal cuando cambia la ruta estando abierto
   useEffect(() => {
     if (!isSearchOpen) return;
 
@@ -73,10 +92,8 @@ export function Header() {
     } else {
       handleCloseModal();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname, isSearchOpen]);
 
-  // Enlace activo (con protección contra pathname null)
   const activeHref = (() => {
     if (!pathname || pathname === "/" || pathname === "/home") return "/";
     const match = categories.find(
@@ -220,7 +237,6 @@ export function Header() {
         rafRef.current = null;
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeHref]);
 
   function handleInputClick() {
@@ -250,97 +266,125 @@ export function Header() {
   }
 
   const s = springsRef.current;
+  const { isOpen: isGalleryOpen, currentIndex, total } = galleryState;
 
   return (
     <>
       <div className="sticky top-4 z-50 w-full">
         <div className="flex justify-center">
-          <LiquidGlass
-            width="fit-content"
-            height={50}
-            borderRadius={50 / 2}
-            surfaceType="convex_squircle"
-            bezelWidth={25}
-            glassThickness={50}
-            refractiveIndex={1.5}
-            refractionScale={1.5}
-            specularOpacity={0.5}
-            blur={1.5}
-            tintColor="rgb(40, 40, 40)"
-            tintOpacity={0.5}
-            className="!justify-start items-center pl-6 pr-[9.3px]"
-          >
-            <div className="flex items-center translate-y-[0.5px]">
-              <div className="flex items-center gap-7">
-                <div className="flex items-center gap-3 translate-y-[0px]">
-                  <img
-                    src="/assets/iconwhite.webp"
-                    alt="App icon"
-                    className="mr-0 h-7 w-7"
-                  />
-                  <span className="shrink-0 text-sm font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
-                    DATA
-                  </span>
+          <div className="relative inline-flex">
+            <LiquidGlass
+              width="fit-content"
+              height={50}
+              borderRadius={50 / 2}
+              surfaceType="convex_squircle"
+              bezelWidth={25}
+              glassThickness={50}
+              refractiveIndex={1.5}
+              refractionScale={1.5}
+              specularOpacity={0.5}
+              blur={1.5}
+              tintColor="rgb(40, 40, 40)"
+              tintOpacity={0.5}
+              className="!justify-start items-center pl-6 pr-[9.3px]"
+            >
+              <div className="flex items-center translate-y-[0.5px]">
+                <div className="flex items-center gap-7">
+                  <div className="flex items-center gap-3 translate-y-[0px]">
+                    <img
+                      src="/assets/iconwhite.webp"
+                      alt="App icon"
+                      className="mr-0 h-7 w-7"
+                    />
+                    <span className="shrink-0 text-sm font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
+                      DATA
+                    </span>
+                  </div>
+
+                  <nav ref={navRef} className="relative flex shrink-0 gap-6">
+                    {initializedRef.current && (
+                      <div
+                        className="absolute rounded-full bg-white/15 backdrop-blur-md dark:bg-white/10"
+                        style={{
+                          left: s.left.value,
+                          top: s.top.value,
+                          width: s.width.value,
+                          height: s.height.value,
+                          zIndex: 0,
+                        }}
+                      />
+                    )}
+
+                    {categories.map((c) => {
+                      const active =
+                        c.href === "/"
+                          ? pathname === "/" || pathname === "/home"
+                          : pathname?.startsWith(c.href);
+                      return (
+                        <Link
+                          key={c.href}
+                          href={c.href}
+                          ref={(el) => {
+                            linkRefs.current[c.href] = el;
+                          }}
+                          className={
+                            active
+                              ? "relative z-10 text-sm font-medium text-neutral-900 dark:text-neutral-50"
+                              : "relative z-10 text-sm font-medium text-neutral-500 transition-colors hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-50"
+                          }
+                        >
+                          {active && (
+                            <span
+                              className="absolute inset-0 flex items-center justify-center text-sm font-medium blur-[2px] opacity-20 text-neutral-900 dark:text-neutral-50 pointer-events-none select-none"
+                              aria-hidden="true"
+                            >
+                              {c.label}
+                            </span>
+                          )}
+                          {c.label}
+                        </Link>
+                      );
+                    })}
+                  </nav>
                 </div>
 
-                <nav ref={navRef} className="relative flex shrink-0 gap-6">
-                  {initializedRef.current && (
-                    <div
-                      className="absolute rounded-full bg-white/15 backdrop-blur-md dark:bg-white/10"
-                      style={{
-                        left: s.left.value,
-                        top: s.top.value,
-                        width: s.width.value,
-                        height: s.height.value,
-                        zIndex: 0,
-                      }}
-                    />
-                  )}
-
-                  {categories.map((c) => {
-                    const active =
-                      c.href === "/"
-                        ? pathname === "/" || pathname === "/home"
-                        : pathname?.startsWith(c.href);
-                    return (
-                      <Link
-                        key={c.href}
-                        href={c.href}
-                        ref={(el) => {
-                          linkRefs.current[c.href] = el;
-                        }}
-                        className={
-                          active
-                            ? "relative z-10 text-sm font-medium text-neutral-900 dark:text-neutral-50"
-                            : "relative z-10 text-sm font-medium text-neutral-500 transition-colors hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-50"
-                        }
-                      >
-                        {active && (
-                          <span
-                            className="absolute inset-0 flex items-center justify-center text-sm font-medium blur-[2px] opacity-20 text-neutral-900 dark:text-neutral-50 pointer-events-none select-none"
-                            aria-hidden="true"
-                          >
-                            {c.label}
-                          </span>
-                        )}
-                        {c.label}
-                      </Link>
-                    );
-                  })}
-                </nav>
+                <div className="ml-12 w-56 shrink-0">
+                  <Input
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onClick={handleInputClick}
+                    placeholder="Buscar..."
+                    className="rounded-full border-neutral-200 bg-neutral-50 text-sm placeholder:text-neutral-400 focus-visible:ring-1 focus-visible:ring-neutral-900 dark:border-neutral-800 dark:bg-neutral-800 dark:placeholder:text-neutral-500 dark:focus-visible:ring-neutral-50"
+                  />
+                </div>
               </div>
+            </LiquidGlass>
 
-              <div className="ml-12 w-56 shrink-0">
-                <Input
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onClick={handleInputClick}
-                  placeholder="Buscar..."
-                  className="rounded-full border-neutral-200 bg-neutral-50 text-sm placeholder:text-neutral-400 focus-visible:ring-1 focus-visible:ring-neutral-900 dark:border-neutral-800 dark:bg-neutral-800 dark:placeholder:text-neutral-500 dark:focus-visible:ring-neutral-50"
-                />
+            {/* Contador de galería con ancho fijo de 80px */}
+            {isGalleryOpen && total > 0 && (
+              <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2">
+                <LiquidGlass
+                  width={80}
+                  height={50}
+                  borderRadius={25}
+                  surfaceType="convex_squircle"
+                  bezelWidth={25}
+                  glassThickness={50}
+                  refractiveIndex={1.5}
+                  refractionScale={1.5}
+                  specularOpacity={0.5}
+                  blur={1.5}
+                  tintColor="rgb(40, 40, 40)"
+                  tintOpacity={0.5}
+                  className="!flex !justify-center !items-center"   // ← añadir !flex
+                >
+                  <span className="text-sm font-medium tabular-nums text-neutral-900 dark:text-neutral-50 w-full text-center">
+                    {currentIndex + 1}/{total}
+                  </span>
+                </LiquidGlass>
               </div>
-            </div>
-          </LiquidGlass>
+            )}
+          </div>
         </div>
 
         {isSearchOpen && (
