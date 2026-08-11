@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { X } from "lucide-react";
@@ -22,10 +22,13 @@ interface SearchResult {
   title: string;
   image?: string;
   type: "game" | "movie" | "music";
+  media_type?: "movie" | "tv";
 }
 
 export function Header() {
   const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchCategory, setSearchCategory] = useState<"game" | "movie" | "music">("game");
@@ -47,51 +50,87 @@ export function Header() {
 
   const [, forceRender] = useState(0);
 
+  // Detectar si venimos de un redirect para abrir búsqueda en /games
+  useEffect(() => {
+    const openSearch = searchParams.get("openSearch");
+    if (openSearch === "true") {
+      setIsSearchOpen(true);
+      const newUrl = window.location.pathname;
+      window.history.replaceState(null, "", newUrl);
+    }
+  }, [searchParams]);
+
+  // Sincronizar la categoría del modal cuando cambia la ruta estando abierto
+  useEffect(() => {
+    if (!isSearchOpen) return;
+
+    if (pathname?.startsWith("/games")) {
+      setSearchCategory("game");
+    } else if (pathname?.startsWith("/movies")) {
+      setSearchCategory("movie");
+    } else if (pathname?.startsWith("/music")) {
+      setSearchCategory("music");
+    } else {
+      handleCloseModal();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, isSearchOpen]);
+
+  // Enlace activo (con protección contra pathname null)
   const activeHref = (() => {
-    if (pathname === "/" || pathname === "/home") return "/";
+    if (!pathname || pathname === "/" || pathname === "/home") return "/";
     const match = categories.find(
       (c) => c.href !== "/" && pathname.startsWith(c.href)
     );
     return match?.href ?? "/";
   })();
 
-  const defaultCategory = pathname.startsWith("/movies")
+  const defaultCategory = pathname?.startsWith("/movies")
     ? "movie"
-    : pathname.startsWith("/music")
+    : pathname?.startsWith("/music")
     ? "music"
-    : pathname.startsWith("/games")
+    : pathname?.startsWith("/games")
     ? "game"
-    : "all";
+    : "game";
 
   const performSearch = useCallback(async () => {
     if (!searchQuery.trim()) {
       setResults([]);
       return;
     }
-    if (searchCategory !== "game") {
-      setResults([
-        {
-          id: "placeholder",
-          title:
-            "Próximamente: búsqueda de " +
-            (searchCategory === "movie" ? "películas/series" : "música"),
-          type: searchCategory,
-        },
-      ]);
+
+    if (searchCategory === "music") {
+      setLoading(true);
+      try {
+        const res = await fetch(`/api/deezer-search?q=${encodeURIComponent(searchQuery)}`);
+        const data = await res.json();
+        setResults(data.results || []);
+      } catch (err) {
+        console.error(err);
+        setResults([]);
+      } finally {
+        setLoading(false);
+      }
       return;
     }
 
     setLoading(true);
     try {
-      const res = await fetch(`/api/igdb-search?q=${encodeURIComponent(searchQuery)}`);
-      const data = await res.json();
-      const games = (data.results || data).map((item: any) => ({
-        id: item.id,
-        title: item.name,
-        image: item.cover?.url?.replace("t_thumb", "t_cover_big") || "",
-        type: "game" as const,
-      }));
-      setResults(games);
+      if (searchCategory === "game") {
+        const res = await fetch(`/api/igdb-search?q=${encodeURIComponent(searchQuery)}`);
+        const data = await res.json();
+        const games = (data.results || data).map((item: any) => ({
+          id: item.id,
+          title: item.name,
+          image: item.cover?.url?.replace("t_thumb", "t_cover_big") || "",
+          type: "game" as const,
+        }));
+        setResults(games);
+      } else if (searchCategory === "movie") {
+        const res = await fetch(`/api/tmdb-search?q=${encodeURIComponent(searchQuery)}`);
+        const data = await res.json();
+        setResults(data.results || []);
+      }
     } catch (err) {
       console.error(err);
       setResults([]);
@@ -181,13 +220,21 @@ export function Header() {
         rafRef.current = null;
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeHref]);
 
   function handleInputClick() {
+    if (
+      !pathname?.startsWith("/games") &&
+      !pathname?.startsWith("/movies") &&
+      !pathname?.startsWith("/music")
+    ) {
+      router.push("/games?openSearch=true");
+      return;
+    }
+
     if (!isSearchOpen) {
-      setSearchCategory(
-        defaultCategory === "all" ? "game" : (defaultCategory as "game" | "movie" | "music")
-      );
+      setSearchCategory(defaultCategory as "game" | "movie" | "music");
       setIsSearchOpen(true);
     }
   }
@@ -220,7 +267,7 @@ export function Header() {
             specularOpacity={0.5}
             blur={1.5}
             tintColor="rgb(40, 40, 40)"
-            tintOpacity={0.6}
+            tintOpacity={0.5}
             className="!justify-start items-center pl-6 pr-[9.3px]"
           >
             <div className="flex items-center translate-y-[0.5px]">
@@ -254,7 +301,7 @@ export function Header() {
                     const active =
                       c.href === "/"
                         ? pathname === "/" || pathname === "/home"
-                        : pathname.startsWith(c.href);
+                        : pathname?.startsWith(c.href);
                     return (
                       <Link
                         key={c.href}
@@ -310,7 +357,7 @@ export function Header() {
               specularOpacity={0.5}
               blur={1.5}
               tintColor="rgb(40, 40, 40)"
-              tintOpacity={0.6}
+              tintOpacity={0.5}
               className="!justify-center items-center cursor-pointer"
             >
               <button

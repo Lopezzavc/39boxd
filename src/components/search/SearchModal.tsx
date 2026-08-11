@@ -1,5 +1,6 @@
 ﻿"use client";
 
+import { useRouter } from "next/navigation";
 import {
   Select,
   SelectContent,
@@ -7,12 +8,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import SpecularBorder from "@/components/SpecularBorder";
 
 interface SearchResult {
   id: string | number;
   title: string;
   image?: string;
   type: "game" | "movie" | "music";
+  media_type?: "movie" | "tv"; // solo viene para resultados de tipo "movie"
 }
 
 interface SearchModalProps {
@@ -42,7 +45,21 @@ export function SearchModal({
   onCategoryChange,
   defaultCategory,
 }: SearchModalProps) {
+  const router = useRouter();
+
   if (!isOpen) return null;
+
+  function handleResultClick(item: SearchResult) {
+    onClose();
+
+    if (item.type === "movie") {
+      const mediaType = item.media_type === "tv" ? "tv" : "movie";
+      router.push(`/movies/${item.id}?type=${mediaType}`);
+      return;
+    }
+
+    // TODO: navegación para "game" y "music" cuando tengan su propia página de detalle
+  }
 
   return (
     <div
@@ -87,22 +104,24 @@ export function SearchModal({
           {results.map((item) => (
             <button
               key={item.id}
-              onClick={onClose}
-              className="text-left group"
+              onClick={() => handleResultClick(item)}
+              className="text-left group block transition-transform duration-200 hover:scale-108"
             >
-              <div className="aspect-[2/3] rounded-xl overflow-hidden bg-neutral-800 border border-white/10">
-                {item.image ? (
-                  <img
-                    src={item.image}
-                    alt={item.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-neutral-500 text-sm">
-                    Sin imagen
-                  </div>
-                )}
-              </div>
+              <SpecularBorder borderRadius={12} bezelWidth={12} specularOpacity={0.5}>
+                <div className={item.type === "music" ? "aspect-square rounded-xl overflow-hidden bg-neutral-800 border border-white/10" : "aspect-[2/3] rounded-xl overflow-hidden bg-neutral-800 border border-white/10"}>
+                  {item.image ? (
+                    <img
+                      src={item.image}
+                      alt={item.title}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-neutral-500 text-sm">
+                      Sin imagen
+                    </div>
+                  )}
+                </div>
+              </SpecularBorder>
               <p className="mt-2 text-sm font-medium text-neutral-200 truncate">
                 {item.title}
               </p>

@@ -8,7 +8,7 @@ export async function searchIgdbGames(query: string): Promise<IgdbGame[]> {
     search "${sanitized}";
     fields id, name, cover.url, total_rating;
     where total_rating != null;
-    limit 100;
+    limit 50;
   `;
 
   return igdbQuery<IgdbGame[]>("games", body);
