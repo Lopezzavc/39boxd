@@ -1,18 +1,22 @@
-// src/app/movies/[id]/page.tsx
-
 import { notFound } from "next/navigation";
 import LiquidGlass from "@/components/LiquidGlass";
-import { getTvdbIdFromTmdb, getTvdbGallery, getTvdbEpisodeStills } from "@/lib/tvdb";
+import {
+  getTvdbIdFromTmdb,
+  getRealPhotoGallery,
+  getTvdbExtendedMetadata,
+} from "@/lib/tvdb";
 import { getOmdbRatings, getOmdbSeasonRatings, type EpisodeRating } from "@/lib/omdb";
 import EpisodeRatingsHeatmap, {
   type HeatmapEpisodeCell,
   type HeatmapSeasonRow,
 } from "./EpisodeRatingsHeatmap";
 import MovieGallery from "./MovieGallery";
+import CastRow from "./CastRow";
+import KeycapButton from "./KeycapButton";
+import RatingGauge from "./RatingGauge";
+import MovieActionButtons from "./MovieActionButtons";
+import RevealSection from "./RevealSection";
 
-// ────────────────────────────────────────────────────────────────────────────
-// Iconografía mínima
-// ────────────────────────────────────────────────────────────────────────────
 function IconStar({ filled }: { filled: boolean }) {
   return (
     <svg width="13" height="13" viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round">
@@ -29,15 +33,6 @@ function IconCheck() {
   );
 }
 
-function IconPencil() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-    </svg>
-  );
-}
-
 const PILL_TEXT_ACTIVE = "text-[#c9a15b] ring-1 ring-[#c9a15b]/25";
 const PILL_TEXT_INACTIVE = "text-neutral-400 ring-1 ring-white/[0.08] hover:text-neutral-200 hover:ring-white/[0.14]";
 
@@ -45,10 +40,7 @@ const LABEL = "text-[11px] font-semibold uppercase tracking-[0.14em] text-neutra
 
 const IMG_BASE = "https://image.tmdb.org/t/p";
 
-// ────────────────────────────────────────────────────────────────────────────
-// Tipos
-// ────────────────────────────────────────────────────────────────────────────
-type CastMember = { name: string; role: string };
+type CastMember = { name: string; role: string; profilePath: string | null };
 
 type Movie = {
   title: string;
@@ -70,7 +62,6 @@ type Movie = {
   communityRating: number;
   communityVotes: number;
   imdbId: string | null;
-  // Datos de tu propia biblioteca — pendientes de conectar con tu sistema de usuarios
   personalRating: number | null;
   favorite: boolean;
   watched: boolean;
@@ -78,15 +69,9 @@ type Movie = {
   dateWatched: string | null;
 };
 
-// Temporada regular de TMDB (excluye specials = season 0)
 type SeasonMeta = { number: number; episodeCount: number };
-
-// Estadísticas de TMDB por número de episodio (fallback de rating/votos)
 type TmdbEpisodeStats = { voteAverage: number; voteCount: number };
 
-// ────────────────────────────────────────────────────────────────────────────
-// Helpers de formato
-// ────────────────────────────────────────────────────────────────────────────
 function formatMoney(n?: number): string {
   if (!n) return "N/D";
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
@@ -110,15 +95,12 @@ function formatReleaseDate(dateStr?: string): string {
   }
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// Fetch a TMDB
-// ────────────────────────────────────────────────────────────────────────────
 async function fetchTmdbDetail(id: string, mediaType: "movie" | "tv") {
   const res = await fetch(
     `https://api.themoviedb.org/3/${mediaType}/${id}?language=es&append_to_response=credits,images,external_ids`,
     {
       headers: { Authorization: `Bearer ${process.env.TMDB_ACCESS_TOKEN}` },
-      next: { revalidate: 3600 }, // cachea 1h, ajusta a gusto
+      next: { revalidate: 3600 },
     }
   );
 
@@ -133,7 +115,7 @@ function mapTmdbToMovie(data: any, mediaType: "movie" | "tv"): Movie {
   const runtimeMinutes: number | undefined = isTv ? data.episode_run_time?.[0] : data.runtime;
 
   const crew: { name: string; job: string }[] = data.credits?.crew || [];
-  const castRaw: { name: string; character: string }[] = data.credits?.cast || [];
+  const castRaw: { name: string; character: string; profile_path: string | null }[] = data.credits?.cast || [];
 
   const director =
     crew.find((c) => c.job === "Director")?.name ||
@@ -147,7 +129,11 @@ function mapTmdbToMovie(data: any, mediaType: "movie" | "tv"): Movie {
   const genres: string[] = (data.genres || []).map((g: any) => g.name);
   const countries: string[] = (data.production_countries || []).map((c: any) => c.name);
 
-  const cast: CastMember[] = castRaw.slice(0, 8).map((c) => ({ name: c.name, role: c.character }));
+  const cast: CastMember[] = castRaw.slice(0, 8).map((c) => ({
+    name: c.name,
+    role: c.character,
+    profilePath: c.profile_path || null,
+  }));
 
   const gallery: string[] = (data.images?.backdrops || [])
     .slice(0, 4)
@@ -177,8 +163,6 @@ function mapTmdbToMovie(data: any, mediaType: "movie" | "tv"): Movie {
     communityRating: data.vote_average || 0,
     communityVotes: data.vote_count || 0,
     imdbId: (isTv ? data.external_ids?.imdb_id : data.imdb_id) || null,
-
-    // Pendiente de tu propio sistema de biblioteca/usuarios
     personalRating: null,
     favorite: false,
     watched: false,
@@ -187,7 +171,6 @@ function mapTmdbToMovie(data: any, mediaType: "movie" | "tv"): Movie {
   };
 }
 
-// Lista de temporadas regulares (excluye specials = season 0, y temporadas sin episodios)
 function getRegularSeasons(data: any): SeasonMeta[] {
   const seasons: any[] = data.seasons || [];
   return seasons
@@ -195,37 +178,6 @@ function getRegularSeasons(data: any): SeasonMeta[] {
     .map((s) => ({ number: s.season_number, episodeCount: s.episode_count }));
 }
 
-// TVDB da fotos reales; si algo falla (id no encontrado, API caída),
-// no rompe la página, simplemente se queda con la galería de TMDB.
-async function getRealPhotoGallery(
-  tmdbId: string,
-  mediaType: "movie" | "tv",
-  fallback: string[]
-): Promise<string[]> {
-  try {
-    const tvdbId = await getTvdbIdFromTmdb(tmdbId, mediaType);
-    if (!tvdbId) return fallback;
-
-    if (mediaType === "tv") {
-      // Series: capturas reales por episodio, son "fotos" de verdad
-      const stills = await getTvdbEpisodeStills(tvdbId);
-      if (stills.length > 0) return stills.slice(0, 12);
-
-      // Si la serie no tiene stills cargados, cae a backgrounds
-      const backgrounds = await getTvdbGallery(tvdbId, "series");
-      return backgrounds.length > 0 ? backgrounds : fallback;
-    }
-
-    // Películas: TVDB no tiene "escenas" por película, solo backgrounds/fanart
-    const backgrounds = await getTvdbGallery(tvdbId, "movies");
-    return backgrounds.length > 0 ? backgrounds : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-// Ratings de episodios de UNA temporada vía OMDb (usa el imdbId de la SERIE).
-// Si algo falla, no rompe la página.
 async function getSeasonEpisodeRatings(
   seriesImdbId: string | null,
   seasonNumber: number
@@ -238,9 +190,6 @@ async function getSeasonEpisodeRatings(
   }
 }
 
-// Fallback: rating (vote_average) y cantidad de votos (vote_count) por episodio
-// de UNA temporada, directo de TMDB (vote_average ya en escala 0-10, no %).
-// Se usa cuando OMDb no tiene el rating y/o los votos cargados todavía.
 async function getTmdbSeasonEpisodeStats(
   tvId: string,
   seasonNumber: number
@@ -269,8 +218,6 @@ async function getTmdbSeasonEpisodeStats(
   }
 }
 
-// Combina OMDb + fallback TMDB (por campo, no en bloque) y arma las filas
-// del heatmap, una por temporada, con el promedio de la temporada incluido.
 function buildSeasonRows(
   seasons: SeasonMeta[],
   episodeRatingsBySeason: EpisodeRating[][],
@@ -311,9 +258,6 @@ function buildSeasonRows(
   });
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// Página
-// ────────────────────────────────────────────────────────────────────────────
 export default async function MovieDetailPage({
   params,
   searchParams,
@@ -330,281 +274,362 @@ export default async function MovieDetailPage({
   const movie = mapTmdbToMovie(data, mediaType);
   const regularSeasons = mediaType === "tv" ? getRegularSeasons(data) : [];
 
-  const [gallery, omdbRatings, episodeRatingsBySeason, tmdbStatsBySeason] = await Promise.all([
-    getRealPhotoGallery(id, mediaType, movie.gallery),
-    movie.imdbId ? getOmdbRatings(movie.imdbId).catch(() => null) : Promise.resolve(null),
+  let tvdbId: string | null = null;
+  if (mediaType === "tv" && data.external_ids?.tvdb_id) {
+    tvdbId = String(data.external_ids.tvdb_id);
+  } else {
+    try {
+      tvdbId = await getTvdbIdFromTmdb(id, mediaType);
+    } catch {}
+  }
+
+  const [
+    gallery,
+    omdbRatings,
+    episodeRatingsBySeason,
+    tmdbStatsBySeason,
+    tvdbMeta,
+  ] = await Promise.all([
+    getRealPhotoGallery(id, mediaType, movie.gallery, tvdbId),
+    movie.imdbId ? getOmdbRatings(movie.imdbId).catch(() => null) : null,
     Promise.all(regularSeasons.map((s) => getSeasonEpisodeRatings(movie.imdbId, s.number))),
     Promise.all(regularSeasons.map((s) => getTmdbSeasonEpisodeStats(id, s.number))),
+    tvdbId ? getTvdbExtendedMetadata(tvdbId, mediaType).catch(() => null) : null,
   ]);
+
   movie.gallery = gallery;
+
+  let boxOfficeWorldwide = movie.boxOffice;
+  let boxOfficeUS: string | null = null;
+
+  if (tvdbMeta) {
+    if (tvdbMeta.boxOffice && tvdbMeta.boxOffice.trim() !== "") {
+      const num = parseFloat(tvdbMeta.boxOffice);
+      if (!isNaN(num)) {
+        boxOfficeWorldwide = formatMoney(num);
+      }
+    }
+    if (tvdbMeta.boxOfficeUS && tvdbMeta.boxOfficeUS.trim() !== "") {
+      const num = parseFloat(tvdbMeta.boxOfficeUS);
+      if (!isNaN(num)) {
+        boxOfficeUS = formatMoney(num);
+      }
+    }
+  }
+
+  const allGenres = [...movie.genres];
+  if (tvdbMeta?.subGenres.length) {
+    for (const sub of tvdbMeta.subGenres) {
+      if (!allGenres.some((g) => g.toLowerCase() === sub.toLowerCase())) {
+        allGenres.push(sub);
+      }
+    }
+  }
 
   const seasonRows = buildSeasonRows(regularSeasons, episodeRatingsBySeason, tmdbStatsBySeason);
 
-  const infoFields: { label: string; value: string }[] = [
+  // ── Duración media para series (TMDB + fallback TVDB) ──
+  let seriesAvgRuntime: string | null = null;
+  if (mediaType === "tv") {
+    const tmdbMinutes = data.episode_run_time?.[0] ?? null;
+    const tvdbMinutes = tvdbMeta?.averageRuntime ?? null;
+    const finalMinutes = tmdbMinutes ?? tvdbMinutes;
+    seriesAvgRuntime = finalMinutes ? formatRuntime(finalMinutes) : "N/D";
+  }
+
+  // ── Red y estado para series ──
+  const networkNames =
+    mediaType === "tv" && data.networks
+      ? data.networks.map((n: any) => n.name).join(", ")
+      : null;
+  const seriesStatus = mediaType === "tv" ? data.status : null;
+
+  // ── Construcción condicional de la ficha técnica ──
+  const baseFields: { label: string; value: string }[] = [
     { label: "Director", value: movie.director },
     { label: "Guion", value: movie.writers.join(", ") },
     { label: "Productoras", value: movie.producers.join(", ") },
-    { label: "Duración", value: movie.duration },
-    { label: "Estreno", value: movie.releaseDate },
-    { label: "Presupuesto", value: movie.budget },
-    { label: "Recaudación", value: movie.boxOffice },
-    { label: "Países", value: movie.countries.join(", ") },
-    { label: "Géneros", value: movie.genres.join(", ") },
   ];
+
+  if (mediaType === "tv") {
+    baseFields.push(
+      { label: "Cadena", value: networkNames || "N/D" },
+      { label: "Duración media", value: seriesAvgRuntime || "N/D" },
+      { label: "Estado", value: seriesStatus || "N/D" },
+      { label: "Estreno", value: movie.releaseDate }
+    );
+  } else {
+    baseFields.push(
+      { label: "Duración", value: movie.duration },
+      { label: "Estreno", value: movie.releaseDate },
+      { label: "Presupuesto", value: movie.budget },
+      { label: "Recaudación (Mundial)", value: boxOfficeWorldwide }
+    );
+    if (boxOfficeUS) {
+      baseFields.push({ label: "Recaudación (EE. UU.)", value: boxOfficeUS });
+    }
+  }
+
+  baseFields.push(
+    { label: "Países", value: movie.countries.join(", ") },
+    { label: "Géneros", value: movie.genres.join(", ") }
+  );
+
+  if (tvdbMeta?.contentWarnings.length) {
+    baseFields.push({
+      label: "Advertencias",
+      value: tvdbMeta.contentWarnings.join(", "),
+    });
+  }
+
+  const castWithImages = movie.cast.map((c) => ({
+    name: c.name,
+    role: c.role,
+    imageUrl: c.profilePath ? `${IMG_BASE}/w185${c.profilePath}` : null,
+  }));
 
   return (
     <div className="-mt-[50px] min-h-screen bg-black text-white">
-      {/* ── Hero ── */}
       <section className="relative h-[75vh] min-h-[460px] w-full overflow-hidden">
-        <img src={movie.backdrop} alt="" className="absolute inset-0 h-full w-full object-cover" />
+        <img
+          src={movie.backdrop}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover animate-[heroZoom_1.6s_cubic-bezier(0.16,1,0.3,1)_forwards] motion-reduce:animate-none"
+          style={{ transformOrigin: "center" }}
+        />
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/55 to-black/5" />
         <div className="absolute inset-0 bg-gradient-to-b from-black/45 via-transparent to-transparent" />
 
         <div className="relative z-10 mx-auto flex h-full max-w-6xl flex-col justify-end px-6 pb-28 sm:px-8 sm:pb-60">
           <div className="flex flex-col gap-8 sm:flex-row sm:items-end">
-            <div className="w-36 shrink-0 overflow-hidden rounded-2xl ring-1 ring-white/10 shadow-[0_25px_60px_-20px_rgba(0,0,0,0.85)] sm:w-48">
-              <img src={movie.poster} alt={movie.title} className="aspect-[2/3] w-full object-cover" />
+            <div
+              className="w-36 shrink-0 overflow-hidden rounded-2xl ring-1 ring-white/10 shadow-[0_25px_60px_-20px_rgba(0,0,0,0.85)] sm:w-48 opacity-0 translate-y-4 animate-[fadeSlideUp_0.7s_cubic-bezier(0.16,1,0.3,1)_0.15s_forwards] motion-reduce:animate-none motion-reduce:opacity-100"
+            >
+              <img
+                src={movie.poster}
+                alt={movie.title}
+                className="aspect-[2/3] w-full object-cover"
+              />
             </div>
 
-            <div className="flex flex-1 flex-col gap-1 pb-1">
-              <div>
-                <h1 className="text-4xl font-semibold leading-[1.05] tracking-[-0.02em] text-white sm:text-[2.75rem]">
+            <div className="flex flex-1 flex-col gap-2 pb-0 opacity-0 translate-y-4 animate-[fadeSlideUp_0.7s_cubic-bezier(0.16,1,0.3,1)_0.3s_forwards] motion-reduce:animate-none motion-reduce:opacity-100">
+              <div className="pb-0">
+                <h1 className="text-4xl font-semibold leading-[0.7] tracking-[-0.02em] text-white sm:text-[2.75rem]">
                   {movie.title}
                 </h1>
                 <p className="mt-2.5 text-[15px] font-medium text-neutral-400">
-                  {movie.year ?? "—"} · {movie.director} · {movie.duration}
+                  {movie.year ?? "—"} · {movie.director} · {mediaType === "tv" ? seriesAvgRuntime : movie.duration}
                 </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-1">
-                {movie.genres.map((g) => (
-                  <LiquidGlass
+                {allGenres.map((g, i) => (
+                  <div
                     key={g}
-                    width="fit-content"
-                    height={26}
-                    borderRadius={13}
-                    surfaceType="convex_squircle"
-                    bezelWidth={14}
-                    glassThickness={30}
-                    refractiveIndex={1.5}
-                    refractionScale={1.5}
-                    specularOpacity={0.5}
-                    blur={1.5}
-                    tintColor="rgb(40, 40, 40)"
-                    tintOpacity={0.4}
-                    className="!justify-center items-center px-3"
+                    className="opacity-0 animate-[fadeIn_0.5s_ease-out_forwards] motion-reduce:animate-none motion-reduce:opacity-100"
+                    style={{ animationDelay: `${0.45 + i * 0.05}s` }}
                   >
-                    <span className="text-[11px] font-medium tracking-wide text-neutral-300">{g}</span>
-                  </LiquidGlass>
+                    <LiquidGlass
+                      width="fit-content"
+                      height={26}
+                      borderRadius={13}
+                      surfaceType="convex_squircle"
+                      bezelWidth={14}
+                      glassThickness={30}
+                      refractiveIndex={1.5}
+                      refractionScale={1.5}
+                      specularOpacity={0.5}
+                      blur={1.5}
+                      tintColor="rgb(40, 40, 40)"
+                      tintOpacity={0.4}
+                      className="!justify-center items-center px-3 transition-transform duration-300 ease-out hover:scale-[1.06] hover:brightness-110"
+                    >
+                      <span className="text-[11px] font-medium tracking-wide text-neutral-300">{g}</span>
+                    </LiquidGlass>
+                  </div>
                 ))}
               </div>
 
-              <div className="mt-1 flex flex-wrap items-center gap-1">
-                <LiquidGlass
-                  width="fit-content"
-                  height={40}
-                  borderRadius={20}
-                  surfaceType="convex_squircle"
-                  bezelWidth={20}
-                  glassThickness={44}
-                  refractiveIndex={1.5}
-                  refractionScale={1.5}
-                  specularOpacity={0.5}
-                  blur={1.5}
-                  tintColor={movie.favorite ? "rgb(201, 161, 91)" : "rgb(40, 40, 40)"}
-                  tintOpacity={movie.favorite ? 0.18 : 0.5}
-                  className="!p-0"
-                >
-                  <div
-                    className={`flex h-full w-full items-center justify-center gap-2 px-4 text-[13px] font-medium transition-colors ${
-                      movie.favorite ? PILL_TEXT_ACTIVE : PILL_TEXT_INACTIVE
-                    }`}
-                  >
-                    <IconStar filled={movie.favorite} />
-                    Favorito
-                  </div>
-                </LiquidGlass>
+              <div className="mt-1 flex flex-wrap items-center gap-1 opacity-0 animate-[fadeIn_0.5s_ease-out_0.6s_forwards] motion-reduce:animate-none motion-reduce:opacity-100">
+                <MovieActionButtons
+                  initialFavorite={movie.favorite}
+                  initialWatched={movie.watched}
+                />
 
-                <LiquidGlass
-                  width="fit-content"
-                  height={40}
-                  borderRadius={20}
-                  surfaceType="convex_squircle"
-                  bezelWidth={20}
-                  glassThickness={44}
-                  refractiveIndex={1.5}
-                  refractionScale={1.5}
-                  specularOpacity={0.5}
-                  blur={1.5}
-                  tintColor={movie.watched ? "rgb(201, 161, 91)" : "rgb(40, 40, 40)"}
-                  tintOpacity={movie.watched ? 0.18 : 0.5}
-                  className="!p-0"
-                >
-                  <div
-                    className={`flex h-full w-full items-center justify-center gap-2 px-4 text-[13px] font-medium transition-colors ${
-                      movie.watched ? PILL_TEXT_ACTIVE : PILL_TEXT_INACTIVE
-                    }`}
-                  >
-                    <IconCheck />
-                    Vista
-                  </div>
-                </LiquidGlass>
+                <KeycapButton
+                  className="ml-1"
+                  href={movie.imdbId ? `https://www.imdb.com/title/${movie.imdbId}` : undefined}
+                />
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* ── Cuerpo ── */}
       <div className="relative z-10 mx-auto max-w-6xl px-6 -mt-24 pb-20 pt-0 sm:px-8 sm:-mt-45">
         <div className="grid gap-16 lg:grid-cols-3">
-          {/* Columna izquierda — mi experiencia personal */}
           <aside className="space-y-14 lg:col-span-1">
-            {/* Mi biblioteca con LiquidGlass */}
-            <LiquidGlass
-              width="100%"
-              height="auto"
-              borderRadius={20}
-              surfaceType="convex_squircle"
-              bezelWidth={25}
-              glassThickness={50}
-              refractiveIndex={1.5}
-              refractionScale={1.5}
-              specularOpacity={0.5}
-              blur={1.5}
-              tintColor="rgb(40, 40, 40)"
-              tintOpacity={0.2}
-              className="!p-0"
-            >
-              <div className="p-7 w-full">
-                <h2 className={LABEL}>Mi biblioteca</h2>
+            <RevealSection delayMs={0}>
+              <LiquidGlass
+                width="100%"
+                height="auto"
+                borderRadius={20}
+                surfaceType="convex_squircle"
+                bezelWidth={25}
+                glassThickness={50}
+                refractiveIndex={1.5}
+                refractionScale={1.5}
+                specularOpacity={0.5}
+                blur={1.5}
+                tintColor="rgb(40, 40, 40)"
+                tintOpacity={0.2}
+                className="!p-0 transition-transform duration-500 ease-out hover:-translate-y-0.5"
+              >
+                <div className="p-7 w-full">
+                  <h2 className={LABEL}>Mi biblioteca</h2>
 
-                <div className="mt-7 flex items-end gap-2">
-                  {movie.personalRating !== null ? (
-                    <>
-                      <span className="text-[3.25rem] font-light leading-none tracking-[-0.03em] tabular-nums text-white">
-                        {movie.personalRating.toFixed(1)}
-                      </span>
-                      <span className="pb-1.5 text-base text-neutral-500">/ 10</span>
-                    </>
-                  ) : (
-                    <span className="pb-1 text-sm text-neutral-500">Sin valorar todavía</span>
-                  )}
-                  <button
-                    type="button"
-                    aria-label="Editar valoración"
-                    className="ml-auto flex h-8 w-8 items-center justify-center rounded-full text-neutral-500 ring-1 ring-white/10 transition-colors hover:text-white hover:ring-white/20"
-                  >
-                    <IconPencil />
-                  </button>
+                  <div className="mt-2 flex justify-center overflow-visible">
+                    <RatingGauge initialValue={movie.personalRating ?? 8.0} size={1} />
+                  </div>
+
+                  <div className="mt-2 space-y-1 border-t border-white/[0.06] pt-5 text-[13px] text-neutral-500">
+                    {movie.dateAdded ? (
+                      <p>Añadida el {movie.dateAdded}</p>
+                    ) : (
+                      <p>Aún no está en tu biblioteca</p>
+                    )}
+                    {movie.dateWatched && <p>Vista el {movie.dateWatched}</p>}
+                  </div>
                 </div>
+              </LiquidGlass>
+            </RevealSection>
 
-                <div className="mt-6 space-y-1 border-t border-white/[0.06] pt-5 text-[13px] text-neutral-500">
-                  {movie.dateAdded ? (
-                    <p>Añadida el {movie.dateAdded}</p>
-                  ) : (
-                    <p>Aún no está en tu biblioteca</p>
-                  )}
-                  {movie.dateWatched && <p>Vista el {movie.dateWatched}</p>}
-                </div>
-              </div>
-            </LiquidGlass>
-
-            <section>
-              <h2 className={LABEL}>Comunidad</h2>
-              <div className="mt-4 space-y-2.5">
-                <div className="flex items-baseline gap-2.5">
-                  <span className="text-2xl font-medium tabular-nums text-white">
-                    {movie.communityRating.toFixed(1)}
-                  </span>
-                  <span className="text-[13px] text-neutral-500">
-                    {movie.communityVotes.toLocaleString("es-CO")} valoraciones (TMDB)
-                  </span>
-                </div>
-
-                {omdbRatings?.imdbRating && (
-                  <div className="flex items-baseline gap-2.5">
+            <RevealSection delayMs={80}>
+              <section>
+                <h2 className={LABEL}>Comunidad</h2>
+                <div className="mt-4 space-y-2.5">
+                  <div className="flex items-baseline gap-2.5 transition-transform duration-300 ease-out hover:translate-x-0.5">
                     <span className="text-2xl font-medium tabular-nums text-white">
-                      {omdbRatings.imdbRating}
+                      {movie.communityRating.toFixed(1)}
                     </span>
                     <span className="text-[13px] text-neutral-500">
-                      {omdbRatings.imdbVotes ? `${omdbRatings.imdbVotes} valoraciones ` : ""}(IMDb)
+                      {movie.communityVotes.toLocaleString("es-CO")} valoraciones (TMDB)
                     </span>
                   </div>
-                )}
 
-                {omdbRatings?.rottenTomatoes && (
-                  <div className="flex items-baseline gap-2.5">
-                    <span className="text-2xl font-medium tabular-nums text-white">
-                      {omdbRatings.rottenTomatoes}
-                    </span>
-                    <span className="text-[13px] text-neutral-500">(Rotten Tomatoes)</span>
-                  </div>
-                )}
+                  {omdbRatings?.imdbRating && (
+                    <div className="flex items-baseline gap-2.5 transition-transform duration-300 ease-out hover:translate-x-0.5">
+                      <span className="text-2xl font-medium tabular-nums text-white">
+                        {omdbRatings.imdbRating}
+                      </span>
+                      <span className="text-[13px] text-neutral-500">
+                        {omdbRatings.imdbVotes ? `${omdbRatings.imdbVotes} valoraciones ` : ""}(IMDb)
+                      </span>
+                    </div>
+                  )}
 
-                {omdbRatings?.metascore && (
-                  <div className="flex items-baseline gap-2.5">
-                    <span className="text-2xl font-medium tabular-nums text-white">
-                      {omdbRatings.metascore}
-                    </span>
-                    <span className="text-[13px] text-neutral-500">(Metascore)</span>
-                  </div>
-                )}
-              </div>
-            </section>
-          </aside>
+                  {omdbRatings?.rottenTomatoes && (
+                    <div className="flex items-baseline gap-2.5 transition-transform duration-300 ease-out hover:translate-x-0.5">
+                      <span className="text-2xl font-medium tabular-nums text-white">
+                        {omdbRatings.rottenTomatoes}
+                      </span>
+                      <span className="text-[13px] text-neutral-500">(Rotten Tomatoes)</span>
+                    </div>
+                  )}
 
-          {/* Columna derecha — información de la película */}
-          <div className="space-y-16 lg:col-span-2">
-            <section>
-              <h2 className={LABEL}>Sinopsis</h2>
-              <p className="mt-3 max-w-2xl text-[15px] leading-[1.7] text-neutral-300">{movie.synopsis}</p>
-            </section>
-
-            <section>
-              <h2 className={LABEL}>Reparto</h2>
-              <div className="mt-4 grid grid-cols-1 gap-x-10 gap-y-2.5 sm:grid-cols-2">
-                {movie.cast.map((c) => (
-                  <div key={c.name} className="flex items-baseline justify-between border-b border-white/[0.05] pb-2.5">
-                    <span className="text-[14px] text-neutral-200">{c.name}</span>
-                    <span className="text-[13px] text-neutral-500">{c.role}</span>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            <section>
-              <h2 className={LABEL}>Ficha técnica</h2>
-              <div className="mt-5 grid grid-cols-2 gap-x-8 gap-y-6 sm:grid-cols-3">
-                {infoFields.map((f) => (
-                  <div key={f.label}>
-                    <h3 className={LABEL}>{f.label}</h3>
-                    <p className="mt-1.5 text-[14px] leading-snug text-neutral-300">{f.value}</p>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            {seasonRows.length > 0 && (
-              <section>
-                <h2 className={LABEL}>Calificaciones por temporada</h2>
-                <div className="mt-4">
-                  <EpisodeRatingsHeatmap seasons={seasonRows} />
+                  {omdbRatings?.metascore && (
+                    <div className="flex items-baseline gap-2.5 transition-transform duration-300 ease-out hover:translate-x-0.5">
+                      <span className="text-2xl font-medium tabular-nums text-white">
+                        {omdbRatings.metascore}
+                      </span>
+                      <span className="text-[13px] text-neutral-500">(Metascore)</span>
+                    </div>
+                  )}
                 </div>
               </section>
+            </RevealSection>
+          </aside>
+
+          <div className="space-y-16 lg:col-span-2">
+            <RevealSection delayMs={0}>
+              <section>
+                <h2 className={LABEL}>Sinopsis</h2>
+                <p className="mt-3 max-w-2xl text-[15px] leading-[1.7] text-neutral-300">{movie.synopsis}</p>
+              </section>
+            </RevealSection>
+
+            <RevealSection delayMs={60}>
+              <section>
+                <h2 className={LABEL}>Reparto</h2>
+                <div className="mt-4">
+                  <CastRow cast={castWithImages} />
+                </div>
+              </section>
+            </RevealSection>
+
+            <RevealSection delayMs={60}>
+              <section>
+                <h2 className={LABEL}>Ficha técnica</h2>
+                <div className="mt-5 grid grid-cols-2 gap-x-8 gap-y-6 sm:grid-cols-3">
+                  {baseFields.map((f) => (
+                    <div
+                      key={f.label}
+                      className="transition-transform duration-300 ease-out hover:-translate-y-0.5"
+                    >
+                      <h3 className={LABEL}>{f.label}</h3>
+                      <p className="mt-1.5 text-[14px] leading-snug text-neutral-300">{f.value}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            </RevealSection>
+
+            {seasonRows.length > 0 && (
+              <RevealSection delayMs={60}>
+                <section>
+                  <h2 className={LABEL}>Calificaciones por temporada</h2>
+                  <div className="mt-4">
+                    <EpisodeRatingsHeatmap seasons={seasonRows} />
+                  </div>
+                </section>
+              </RevealSection>
             )}
 
             {movie.gallery.length > 0 && (
-              <section>
-                <h2 className={LABEL}>Galería</h2>
-                <div className="mt-4">
-                  <MovieGallery images={movie.gallery} />
-                </div>
-              </section>
+              <RevealSection delayMs={60}>
+                <section>
+                  <h2 className={LABEL}>Galería</h2>
+                  <div className="mt-4">
+                    <MovieGallery images={movie.gallery} />
+                  </div>
+                </section>
+              </RevealSection>
             )}
           </div>
         </div>
       </div>
+
+      <style>{`
+        @keyframes heroZoom {
+          from { transform: scale(1.08); opacity: 0.85; }
+          to { transform: scale(1); opacity: 1; }
+        }
+        @keyframes fadeSlideUp {
+          from { opacity: 0; transform: translateY(16px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          * {
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.01ms !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }

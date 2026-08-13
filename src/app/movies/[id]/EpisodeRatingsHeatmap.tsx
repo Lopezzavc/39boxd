@@ -238,7 +238,7 @@ export default function EpisodeRatingsHeatmap({ seasons }: { seasons: HeatmapSea
       {hasOverflow && (
         <div
           onMouseDown={handleTrackPointerDown}
-          className="relative mt-2.5 h-[3px] w-full cursor-pointer rounded-full bg-white/[0.06]"
+          className="relative mt-2.5 h-[5px] w-full cursor-pointer rounded-full bg-white/[0.06]"
         >
           <div
             onMouseDown={handleThumbPointerDown}

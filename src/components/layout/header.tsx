@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useLayoutEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { X } from "lucide-react";
 import LiquidGlass from "@/components/LiquidGlass";
@@ -48,8 +48,10 @@ export function Header() {
   });
 
   const navRef = useRef<HTMLDivElement>(null);
+  const outerRef = useRef<HTMLDivElement>(null);
   const linkRefs = useRef<Record<string, HTMLAnchorElement | null>>({});
   const debounceRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const navOffsetRef = useRef({ left: 0, top: 0 });
 
   const springsRef = useRef({
     left: new Spring(0, 260, 14),
@@ -109,6 +111,24 @@ export function Header() {
     : pathname?.startsWith("/games")
     ? "game"
     : "game";
+
+  // Calcula el offset del nav respecto al contenedor exterior
+  useLayoutEffect(() => {
+    const updateOffset = () => {
+      const outer = outerRef.current;
+      const nav = navRef.current;
+      if (!outer || !nav) return;
+      const outerRect = outer.getBoundingClientRect();
+      const navRect = nav.getBoundingClientRect();
+      navOffsetRef.current = {
+        left: navRect.left - outerRect.left,
+        top: navRect.top - outerRect.top,
+      };
+    };
+    updateOffset();
+    window.addEventListener("resize", updateOffset);
+    return () => window.removeEventListener("resize", updateOffset);
+  }, [activeHref, pathname]);
 
   const performSearch = useCallback(async () => {
     if (!searchQuery.trim()) {
@@ -268,11 +288,34 @@ export function Header() {
   const s = springsRef.current;
   const { isOpen: isGalleryOpen, currentIndex, total } = galleryState;
 
+  const activeLabel = categories.find((c) => c.href === activeHref)?.label ?? "";
+
   return (
     <>
       <div className="sticky top-4 z-50 w-full">
         <div className="flex justify-center">
-          <div className="relative inline-flex">
+          <div className="relative inline-flex" ref={outerRef}>
+            {/* Blur text de la pestaña activa – detrás del LiquidGlass */}
+            {initializedRef.current && activeHref && (
+              <div
+                className="absolute pointer-events-none"
+                style={{
+                  left: navOffsetRef.current.left + s.left.value,
+                  top: navOffsetRef.current.top + s.top.value,
+                  width: s.width.value,
+                  height: s.height.value,
+                  zIndex: 0,
+                }}
+              >
+                <span
+                  className="absolute inset-0 flex items-center justify-center text-sm font-medium blur-[2px] opacity-40 text-neutral-900 dark:text-neutral-50 pointer-events-none select-none"
+                  aria-hidden="true"
+                >
+                  {activeLabel}
+                </span>
+              </div>
+            )}
+
             <LiquidGlass
               width="fit-content"
               height={50}
@@ -302,6 +345,7 @@ export function Header() {
                   </div>
 
                   <nav ref={navRef} className="relative flex shrink-0 gap-6">
+                    {/* Pastilla de fondo (siempre dentro del vidrio) */}
                     {initializedRef.current && (
                       <div
                         className="absolute rounded-full bg-white/15 backdrop-blur-md dark:bg-white/10"
@@ -333,14 +377,6 @@ export function Header() {
                               : "relative z-10 text-sm font-medium text-neutral-500 transition-colors hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-50"
                           }
                         >
-                          {active && (
-                            <span
-                              className="absolute inset-0 flex items-center justify-center text-sm font-medium blur-[2px] opacity-20 text-neutral-900 dark:text-neutral-50 pointer-events-none select-none"
-                              aria-hidden="true"
-                            >
-                              {c.label}
-                            </span>
-                          )}
                           {c.label}
                         </Link>
                       );
@@ -360,28 +396,36 @@ export function Header() {
               </div>
             </LiquidGlass>
 
-            {/* Contador de galería con ancho fijo de 80px */}
+            {/* Contador de galería con blur detrás de su propio vidrio */}
             {isGalleryOpen && total > 0 && (
               <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2">
-                <LiquidGlass
-                  width={80}
-                  height={50}
-                  borderRadius={25}
-                  surfaceType="convex_squircle"
-                  bezelWidth={25}
-                  glassThickness={50}
-                  refractiveIndex={1.5}
-                  refractionScale={1.5}
-                  specularOpacity={0.5}
-                  blur={1.5}
-                  tintColor="rgb(40, 40, 40)"
-                  tintOpacity={0.5}
-                  className="!flex !justify-center !items-center"   // ← añadir !flex
-                >
-                  <span className="text-sm font-medium tabular-nums text-neutral-900 dark:text-neutral-50 w-full text-center">
+                <div className="relative">
+                  <span
+                    className="absolute inset-0 flex items-center justify-center text-sm font-medium blur-[1px] opacity-50 text-neutral-900 dark:text-neutral-50 pointer-events-none select-none"
+                    aria-hidden="true"
+                  >
                     {currentIndex + 1}/{total}
                   </span>
-                </LiquidGlass>
+                  <LiquidGlass
+                    width={80}
+                    height={50}
+                    borderRadius={25}
+                    surfaceType="convex_squircle"
+                    bezelWidth={25}
+                    glassThickness={50}
+                    refractiveIndex={1.5}
+                    refractionScale={1.5}
+                    specularOpacity={0.5}
+                    blur={1.5}
+                    tintColor="rgb(40, 40, 40)"
+                    tintOpacity={0.5}
+                    className="!flex !justify-center !items-center"
+                  >
+                    <span className="text-sm font-medium tabular-nums text-neutral-900 dark:text-neutral-50 w-full text-center">
+                      {currentIndex + 1}/{total}
+                    </span>
+                  </LiquidGlass>
+                </div>
               </div>
             )}
           </div>

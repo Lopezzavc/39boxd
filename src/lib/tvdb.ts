@@ -1,5 +1,3 @@
-// src/lib/tvdb.ts
-
 let cachedToken: string | null = null;
 let tokenExpiresAt = 0;
 
@@ -18,7 +16,7 @@ export async function getTvdbToken(): Promise<string> {
 
   const json = await res.json();
   cachedToken = json.data.token as string;
-  tokenExpiresAt = Date.now() + 29 * 24 * 60 * 60 * 1000; // ~29 días (expira al mes)
+  tokenExpiresAt = Date.now() + 29 * 24 * 60 * 60 * 1000;
 
   return cachedToken;
 }
@@ -35,9 +33,6 @@ export async function tvdbFetch(path: string) {
   return res.json();
 }
 
-// ── Artwork types: TVDB no garantiza IDs fijos, hay que resolverlos por slug ──
-// Ojo: el mismo slug (ej. "backgrounds") se repite para distintos recordType
-// (series / movie / season), así que se indexa por "recordType:slug".
 let artworkTypeCache: Record<string, number> | null = null;
 
 async function getArtworkTypeId(
@@ -54,7 +49,6 @@ async function getArtworkTypeId(
   return artworkTypeCache[`${recordType}:${slug}`] ?? null;
 }
 
-// Fondos/fanart estilo poster grande (NO son fotos de escenas reales)
 export async function getTvdbGallery(
   tvdbId: string,
   entity: "series" | "movies"
@@ -70,8 +64,6 @@ export async function getTvdbGallery(
     .map((a) => a.image);
 }
 
-// Fotos reales: capturas de cada episodio (screencaps), solo aplica a series.
-// Trae los episodios de la temporada default y devuelve su imagen si tienen.
 export async function getTvdbEpisodeStills(tvdbId: string): Promise<string[]> {
   const json = await tvdbFetch(`/series/${tvdbId}/episodes/default`);
   const episodes: any[] = json.data?.episodes || [];
@@ -81,7 +73,6 @@ export async function getTvdbEpisodeStills(tvdbId: string): Promise<string[]> {
     .filter((img: string | null): img is string => Boolean(img));
 }
 
-// Mapea un ID de TMDB al ID interno de TVDB
 export async function getTvdbIdFromTmdb(
   tmdbId: string,
   mediaType: "movie" | "tv"
@@ -94,4 +85,101 @@ export async function getTvdbIdFromTmdb(
   );
 
   return match ? String(match[wantedType].id) : null;
+}
+
+export interface TvdbExtendedMetadata {
+  subGenres: string[];
+  contentWarnings: string[];
+  timePeriod: string | null;
+  boxOffice: string | null;
+  boxOfficeUS: string | null;
+  averageRuntime: number | null;   // ← nuevo campo
+}
+
+export async function getTvdbExtendedMetadata(
+  tvdbId: string,
+  type: "movie" | "tv"
+): Promise<TvdbExtendedMetadata | null> {
+  try {
+    const endpoint =
+      type === "tv"
+        ? `/series/${tvdbId}/extended`
+        : `/movies/${tvdbId}/extended`;
+
+    const json = await tvdbFetch(endpoint);
+    const data = json.data;
+
+    const tags: any[] = data.tags ?? [];
+
+    const subGenres = tags
+      .filter((t) => t.tagName === "Sub-Genre")
+      .map((t) => t.name)
+      .filter(Boolean);
+
+    const contentWarnings = tags
+      .filter((t) => t.tagName === "Sensitive Content & Trigger Warnings")
+      .map((t) => t.name)
+      .filter(Boolean);
+
+    const timePeriodTags = tags.filter((t) => t.tagName === "Time Period");
+    let timePeriod: string | null = null;
+    if (timePeriodTags.length > 0) {
+      timePeriod = timePeriodTags[0].name;
+    } else if (data.firstAired) {
+      const year = new Date(data.firstAired).getFullYear();
+      if (!isNaN(year)) timePeriod = year.toString();
+    }
+
+    const boxOfficeRaw: string | undefined = data.boxOffice;
+    let boxOffice: string | null = null;
+    if (boxOfficeRaw && boxOfficeRaw.trim() !== "") {
+      boxOffice = boxOfficeRaw;
+    }
+
+    const boxOfficeUSRaw: string | undefined = data.boxOfficeUS;
+    let boxOfficeUS: string | null = null;
+    if (boxOfficeUSRaw && boxOfficeUSRaw.trim() !== "") {
+      boxOfficeUS = boxOfficeUSRaw;
+    }
+
+    // ── Extraer averageRuntime, si existe ──
+    const averageRuntime: number | null =
+      typeof data.averageRuntime === "number" ? data.averageRuntime : null;
+
+    return {
+      subGenres,
+      contentWarnings,
+      timePeriod,
+      boxOffice,
+      boxOfficeUS,
+      averageRuntime,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function getRealPhotoGallery(
+  tmdbId: string,
+  mediaType: "movie" | "tv",
+  fallback: string[],
+  tvdbId?: string | null
+): Promise<string[]> {
+  try {
+    const resolvedTvdbId = tvdbId ?? (await getTvdbIdFromTmdb(tmdbId, mediaType));
+    if (!resolvedTvdbId) return fallback;
+
+    if (mediaType === "tv") {
+      const stills = await getTvdbEpisodeStills(resolvedTvdbId);
+      if (stills.length > 0) return stills.slice(0, 12);
+
+      const backgrounds = await getTvdbGallery(resolvedTvdbId, "series");
+      return backgrounds.length > 0 ? backgrounds : fallback;
+    }
+
+    const backgrounds = await getTvdbGallery(resolvedTvdbId, "movies");
+    return backgrounds.length > 0 ? backgrounds : fallback;
+  } catch {
+    return fallback;
+  }
 }

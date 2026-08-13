@@ -1,0 +1,190 @@
+"use client";
+
+import { useState } from "react";
+import LiquidGlass from "@/components/LiquidGlass";
+
+function IconStar({ filled }: { filled: boolean }) {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round">
+      <path d="M12 3.5l2.6 5.4 5.9.7-4.3 4.1 1 5.9-5.2-2.8-5.2 2.8 1-5.9L3.5 9.6l5.9-.7L12 3.5z" />
+    </svg>
+  );
+}
+
+function IconCheck() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  );
+}
+
+// ── Colores independientes: Favorito ──
+const FAVORITE_TEXT_ACTIVE_RGB = "rgb(255, 220, 122)";
+const FAVORITE_TEXT_INACTIVE_RGB = "rgb(163, 163, 163)";
+const FAVORITE_TEXT_HOVER_RGB = "rgb(229, 229, 229)";
+const FAVORITE_RING_ACTIVE = "ring-1 ring-[#c9a15b]/25";
+const FAVORITE_RING_INACTIVE = "ring-1 ring-white/[0.08] hover:ring-white/[0.14]";
+const FAVORITE_TINT_ACTIVE = "rgb(40, 40, 40)";
+const FAVORITE_TINT_INACTIVE = "rgb(40, 40, 40)";
+const FAVORITE_TINT_OPACITY_ACTIVE = 0.5;
+const FAVORITE_TINT_OPACITY_INACTIVE = 0.5;
+
+// ── Colores independientes: Vista ──
+const WATCHED_TEXT_ACTIVE_RGB = "rgb(100, 236, 127)";
+const WATCHED_TEXT_INACTIVE_RGB = "rgb(163, 163, 163)";
+const WATCHED_TEXT_HOVER_RGB = "rgb(229, 229, 229)";
+const WATCHED_RING_ACTIVE = "ring-1 ring-[#6fae7c]/25";
+const WATCHED_RING_INACTIVE = "ring-1 ring-white/[0.08] hover:ring-white/[0.14]";
+const WATCHED_TINT_ACTIVE = "rgb(40, 40, 40)";
+const WATCHED_TINT_INACTIVE = "rgb(40, 40, 40)";
+const WATCHED_TINT_OPACITY_ACTIVE = 0.5;
+const WATCHED_TINT_OPACITY_INACTIVE = 0.5;
+
+// ── Configuración del glow: Favorito (independiente) ──
+const FAVORITE_GLOW_BLUR_PX = 8;
+const FAVORITE_GLOW_ALPHA = 0.6;
+
+// ── Configuración del glow: Vista (independiente) ──
+const WATCHED_GLOW_BLUR_PX = 8;
+const WATCHED_GLOW_ALPHA = 0.6;
+
+function toGlowShadow(rgb: string, blurPx: number, alpha: number) {
+  const channels = rgb.replace("rgb(", "").replace(")", "");
+  return [
+    `0 0 ${blurPx}px rgba(${channels}, ${alpha})`,
+    `0 0 ${blurPx * 2}px rgba(${channels}, ${alpha * 0.6})`,
+    `0 0 ${blurPx * 3}px rgba(${channels}, ${alpha * 0.35})`,
+  ].join(", ");
+}
+
+export default function MovieActionButtons({
+  initialFavorite,
+  initialWatched,
+}: {
+  initialFavorite: boolean;
+  initialWatched: boolean;
+}) {
+  const [favorite, setFavorite] = useState(initialFavorite);
+  const [watched, setWatched] = useState(initialWatched);
+
+  const favoriteColor = favorite ? FAVORITE_TEXT_ACTIVE_RGB : FAVORITE_TEXT_INACTIVE_RGB;
+  const watchedColor = watched ? WATCHED_TEXT_ACTIVE_RGB : WATCHED_TEXT_INACTIVE_RGB;
+
+  const favoriteShadow = favorite
+    ? toGlowShadow(FAVORITE_TEXT_ACTIVE_RGB, FAVORITE_GLOW_BLUR_PX, FAVORITE_GLOW_ALPHA)
+    : "none";
+  const watchedShadow = watched
+    ? toGlowShadow(WATCHED_TEXT_ACTIVE_RGB, WATCHED_GLOW_BLUR_PX, WATCHED_GLOW_ALPHA)
+    : "none";
+
+  return (
+    <>
+      {/* ── Botón Favorito ── */}
+      <div className="relative" style={{ width: "fit-content" }}>
+        {/* Capa detrás del vidrio: texto visible solo cuando está activo, refractado por el backdrop-filter */}
+        {favorite && (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 flex items-center justify-center gap-2 px-4 text-[13px] font-medium"
+            style={{ color: FAVORITE_TEXT_ACTIVE_RGB, zIndex: 0 }}
+          >
+            <IconStar filled={favorite} />
+            Favorito
+          </div>
+        )}
+
+        <LiquidGlass
+          width="fit-content"
+          height={40}
+          borderRadius={20}
+          surfaceType="convex_squircle"
+          bezelWidth={20}
+          glassThickness={44}
+          refractiveIndex={1.5}
+          refractionScale={1.5}
+          specularOpacity={0.5}
+          blur={1.5}
+          tintColor={favorite ? FAVORITE_TINT_ACTIVE : FAVORITE_TINT_INACTIVE}
+          tintOpacity={favorite ? FAVORITE_TINT_OPACITY_ACTIVE : FAVORITE_TINT_OPACITY_INACTIVE}
+          className="!p-0 relative z-[1]"
+        >
+          <button
+            type="button"
+            onClick={() => setFavorite((v) => !v)}
+            aria-pressed={favorite}
+            style={{
+              color: favoriteColor,
+              textShadow: favoriteShadow,
+            }}
+            onMouseEnter={(e) => {
+              if (!favorite) e.currentTarget.style.color = FAVORITE_TEXT_HOVER_RGB;
+            }}
+            onMouseLeave={(e) => {
+              if (!favorite) e.currentTarget.style.color = FAVORITE_TEXT_INACTIVE_RGB;
+            }}
+            className={`flex h-full w-full items-center justify-center gap-2 px-4 text-[13px] font-medium transition-colors ${
+              favorite ? FAVORITE_RING_ACTIVE : FAVORITE_RING_INACTIVE
+            }`}
+          >
+            <IconStar filled={favorite} />
+            Favorito
+          </button>
+        </LiquidGlass>
+      </div>
+
+      {/* ── Botón Vista ── */}
+      <div className="relative" style={{ width: "fit-content" }}>
+        {/* Capa detrás del vidrio: texto visible solo cuando está activo, refractado por el backdrop-filter */}
+        {watched && (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 flex items-center justify-center gap-2 px-4 text-[13px] font-medium"
+            style={{ color: WATCHED_TEXT_ACTIVE_RGB, zIndex: 0 }}
+          >
+            <IconCheck />
+            Vista
+          </div>
+        )}
+
+        <LiquidGlass
+          width="fit-content"
+          height={40}
+          borderRadius={20}
+          surfaceType="convex_squircle"
+          bezelWidth={20}
+          glassThickness={44}
+          refractiveIndex={1.5}
+          refractionScale={1.5}
+          specularOpacity={0.5}
+          blur={1.5}
+          tintColor={watched ? WATCHED_TINT_ACTIVE : WATCHED_TINT_INACTIVE}
+          tintOpacity={watched ? WATCHED_TINT_OPACITY_ACTIVE : WATCHED_TINT_OPACITY_INACTIVE}
+          className="!p-0 relative z-[1]"
+        >
+          <button
+            type="button"
+            onClick={() => setWatched((v) => !v)}
+            aria-pressed={watched}
+            style={{
+              color: watchedColor,
+              textShadow: watchedShadow,
+            }}
+            onMouseEnter={(e) => {
+              if (!watched) e.currentTarget.style.color = WATCHED_TEXT_HOVER_RGB;
+            }}
+            onMouseLeave={(e) => {
+              if (!watched) e.currentTarget.style.color = WATCHED_TEXT_INACTIVE_RGB;
+            }}
+            className={`flex h-full w-full items-center justify-center gap-2 px-4 text-[13px] font-medium transition-colors ${
+              watched ? WATCHED_RING_ACTIVE : WATCHED_RING_INACTIVE
+            }`}
+          >
+            <IconCheck />
+            Vista
+          </button>
+        </LiquidGlass>
+      </div>
+    </>
+  );
+}
