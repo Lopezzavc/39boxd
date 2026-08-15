@@ -22,6 +22,7 @@ function IconChevronRight() {
 export default function MovieGallery({ images }: { images: string[] }) {
   const [open, setOpen] = useState(false);
   const [index, setIndex] = useState(0);
+  const [thumbnailHover, setThumbnailHover] = useState(false);
 
   useEffect(() => {
     const event = new CustomEvent("gallery-state", {
@@ -75,6 +76,8 @@ export default function MovieGallery({ images }: { images: string[] }) {
         <button
           type="button"
           onClick={() => openAt(0)}
+          onMouseEnter={() => setThumbnailHover(true)}
+          onMouseLeave={() => setThumbnailHover(false)}
           className="group relative block aspect-video w-full"
           aria-label="Ver galería de imágenes"
         >
@@ -109,7 +112,7 @@ export default function MovieGallery({ images }: { images: string[] }) {
             <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
 
             {images.length > 1 && (
-              <div className="absolute bottom-3 right-3 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+              <div className="absolute bottom-3 right-3">
                 <LiquidGlass
                   width={110}
                   height={32}
@@ -123,9 +126,14 @@ export default function MovieGallery({ images }: { images: string[] }) {
                   blur={1.5}
                   tintColor="rgb(40, 40, 40)"
                   tintOpacity={0.5}
+                  active={thumbnailHover}
+                  restColor="transparent"
+                  activeTransitionMs={300}
                   className="!justify-center items-center"
                 >
-                  <span className="flex h-full w-full items-center justify-center whitespace-nowrap text-[11px] font-medium text-white/90">
+                  <span
+                    className="flex h-full w-full items-center justify-center whitespace-nowrap text-[11px] font-medium text-white/90 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+                  >
                     Ver {images.length} fotos
                   </span>
                 </LiquidGlass>

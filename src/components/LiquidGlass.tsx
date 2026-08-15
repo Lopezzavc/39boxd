@@ -26,6 +26,25 @@ export interface LiquidGlassProps {
   tintOpacity?: number;
   className?: string;
   style?: React.CSSProperties;
+  /**
+   * Si se define, el glass se comporta como el "Slider Demo": en reposo se muestra
+   * como un color sólido (restColor) sin refracción, y al estar activo (active=true)
+   * hace crossfade hacia el efecto liquid glass real (backdrop-filter). No es
+   * necesario usar esta prop para el comportamiento anterior (siempre-glass).
+   */
+  active?: boolean;
+  /** Color sólido mostrado cuando active=false. Por defecto blanco, como el thumb del slider demo. */
+  restColor?: string;
+  /** Duración en ms de la transición entre estado sólido y estado glass. */
+  activeTransitionMs?: number;
+  /**
+   * Overlay de brillo al presionar/arrastrar. Se implementa como una capa blanca
+   * translúcida superpuesta (opacity), NUNCA como CSS `filter` en un ancestro:
+   * un `filter` en un ancestro de un elemento con `backdrop-filter` rompe la
+   * captura del fondo (bug confirmado). No usar `style.filter` cerca de este
+   * componente por el mismo motivo.
+   */
+  pressed?: boolean;
 }
 
 export default function LiquidGlass({
@@ -44,11 +63,19 @@ export default function LiquidGlass({
   tintOpacity = 0,
   className = "",
   style = {},
+  active,
+  restColor = "rgb(255, 255, 255)",
+  activeTransitionMs = 260,
+  pressed = false,
 }: LiquidGlassProps) {
   const uid = useId();
   const filterId = `liquid-glass-${uid}`;
+  const hasActiveMode = active !== undefined;
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const solidLayerRef = useRef<HTMLDivElement>(null);
+  const glassLayerRef = useRef<HTMLDivElement>(null);
+  const tintLayerRef = useRef<HTMLDivElement>(null);
   const displacementImgRef = useRef<SVGFEImageElement>(null);
   const specularImgRef = useRef<SVGFEImageElement>(null);
   const displacementMapRef = useRef<SVGFEDisplacementMapElement>(null);
@@ -96,6 +123,24 @@ export default function LiquidGlass({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── Modo "slider demo": crossfade entre capa sólida y capa glass (y el tint acompaña) ──
+  useEffect(() => {
+    if (!hasActiveMode || !solidLayerRef.current || !glassLayerRef.current) return;
+    const solidOpacity = active ? 0 : 1;
+    const glassOpacity = active ? 1 : 0;
+    solidLayerRef.current.style.opacity = String(solidOpacity);
+    glassLayerRef.current.style.opacity = String(glassOpacity);
+    if (tintLayerRef.current) {
+      tintLayerRef.current.style.opacity = String(active ? tintOpacity : 0);
+    }
+  }, [active, hasActiveMode, tintOpacity]);
+
+  const sizeStyle: React.CSSProperties = {
+    width: typeof width === "number" ? `${width}px` : width,
+    height: typeof height === "number" ? `${height}px` : height,
+    borderRadius: `${borderRadius}px`,
+  };
+
   return (
     <div
       ref={containerRef}
@@ -105,11 +150,13 @@ export default function LiquidGlass({
         overflow: "hidden",
         boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
         ...style,
-        width: typeof width === "number" ? `${width}px` : width,
-        height: typeof height === "number" ? `${height}px` : height,
-        borderRadius: `${borderRadius}px`,
-        backdropFilter: `url(#${filterId})`,
-        WebkitBackdropFilter: `url(#${filterId})`,
+        ...sizeStyle,
+        ...(hasActiveMode
+          ? {}
+          : {
+              backdropFilter: `url(#${filterId})`,
+              WebkitBackdropFilter: `url(#${filterId})`,
+            }),
       }}
     >
       <svg width="0" height="0" style={{ position: "absolute" }}>
@@ -134,14 +181,66 @@ export default function LiquidGlass({
           </filter>
         </defs>
       </svg>
+
+      {hasActiveMode && (
+        <>
+          {/* Capa sólida: visible en reposo, igual que el thumb blanco del slider demo */}
+          <div
+            ref={solidLayerRef}
+            aria-hidden
+            style={{
+              position: "absolute",
+              inset: 0,
+              borderRadius: "inherit",
+              backgroundColor: restColor,
+              opacity: active ? 0 : 1,
+              transition: `opacity ${activeTransitionMs}ms ease`,
+              pointerEvents: "none",
+              zIndex: 0,
+            }}
+          />
+          {/* Capa glass: solo aplica backdrop-filter aquí, se revela al activar */}
+          <div
+            ref={glassLayerRef}
+            aria-hidden
+            style={{
+              position: "absolute",
+              inset: 0,
+              borderRadius: "inherit",
+              opacity: active ? 1 : 0,
+              transition: `opacity ${activeTransitionMs}ms ease`,
+              backdropFilter: `url(#${filterId})`,
+              WebkitBackdropFilter: `url(#${filterId})`,
+              pointerEvents: "none",
+              zIndex: 0,
+            }}
+          />
+        </>
+      )}
+
       <div
+        ref={tintLayerRef}
         aria-hidden
         style={{
           position: "absolute",
           inset: 0,
           borderRadius: "inherit",
           backgroundColor: tintColor,
-          opacity: tintOpacity,
+          opacity: hasActiveMode ? (active ? tintOpacity : 0) : tintOpacity,
+          transition: hasActiveMode ? `opacity ${activeTransitionMs}ms ease` : undefined,
+          pointerEvents: "none",
+          zIndex: 0,
+        }}
+      />
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          inset: 0,
+          borderRadius: "inherit",
+          backgroundColor: "rgb(255, 255, 255)",
+          opacity: pressed ? 0.12 : 0,
+          transition: "opacity 150ms ease",
           pointerEvents: "none",
           zIndex: 0,
         }}

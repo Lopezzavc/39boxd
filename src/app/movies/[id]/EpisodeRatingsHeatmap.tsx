@@ -264,8 +264,8 @@ export default function EpisodeRatingsHeatmap({ seasons }: { seasons: HeatmapSea
             refractionScale={1.5}
             specularOpacity={0.5}
             blur={1.5}
-            tintColor="rgb(30, 30, 30)"
-            tintOpacity={0.55}
+            tintColor="rgb(40, 40, 40)"
+            tintOpacity={0.5}
             className="!p-0"
           >
             <div className="min-w-[170px] px-4 py-3">
