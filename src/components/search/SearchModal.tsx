@@ -132,17 +132,21 @@ export function SearchModal({
 
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-9 gap-6">
           {results.map((item) => {
-            const movieHref =
+            const href =
               item.type === "movie"
                 ? `/movies/${item.id}?type=${item.media_type === "tv" ? "tv" : "movie"}`
+                : item.type === "game"
+                ? `/games/${item.id}`
+                : item.type === "music"
+                ? `/music/${item.id}`
                 : "#";
-            const isPrerenderable = item.type === "movie";
+            const isPrerenderable = item.type === "movie" || item.type === "game" || item.type === "music";
             const isNavigating = navigatingId === item.id;
 
             return (
               <Link
                 key={item.id}
-                href={isPrerenderable ? movieHref : "#"}
+                href={isPrerenderable ? href : "#"}
                 data-prerender={isPrerenderable ? "true" : undefined}
                 aria-disabled={navigatingId !== null && !isNavigating ? true : undefined}
                 onClick={(e) => {
@@ -167,7 +171,7 @@ export function SearchModal({
                     // pero liberamos el lock para no dejarlo pegado.
                     setNavigatingId(null);
                     onClose();
-                    router.push(movieHref);
+                    router.push(href);
                     return;
                   }
 
@@ -177,7 +181,7 @@ export function SearchModal({
                     // sin depender de que el componente se remonte.
                     setNavigatingId(null);
                     onClose();
-                    router.push(movieHref);
+                    router.push(href);
                   });
                 }}
                 className="text-left group block transition-transform duration-200 hover:scale-108"

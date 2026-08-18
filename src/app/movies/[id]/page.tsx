@@ -95,7 +95,7 @@ function formatRuntime(minutes?: number): string {
 function formatReleaseDate(dateStr?: string): string {
   if (!dateStr) return "N/D";
   try {
-    return new Intl.DateTimeFormat("es", { month: "long", year: "numeric" }).format(new Date(dateStr));
+    return new Intl.DateTimeFormat("es", { day: "numeric", month: "long", year: "numeric" }).format(new Date(dateStr));
   } catch {
     return dateStr;
   }
