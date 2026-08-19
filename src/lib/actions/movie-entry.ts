@@ -6,19 +6,26 @@ import type { MediaStatus } from "@/types/media";
 
 const USER_ID = "00000000-0000-0000-0000-000000000000";
 const TMDB_IMG_BASE = "https://image.tmdb.org/t/p/w500";
+const TMDB_BACKDROP_BASE = "https://image.tmdb.org/t/p/original";
+
+type ContentType = "movie" | "tv_live_action" | "tv_animated" | "anime";
 
 type MovieMediaRef = {
   tmdbId: string;
   mediaType: "movie" | "series";
+  contentType: ContentType;
   title: string;
   releaseDate: string | null;
   posterPath: string | null;
+  backdropPath: string | null;
   synopsis: string | null;
 };
 
 /**
  * Busca el media_id correspondiente a un tmdbId. Si no existe el registro en
- * `media`, lo crea. Usado por saveMovieEntry, que sí puede crear entradas.
+ * `media`, lo crea. Si ya existe, actualiza cover_url/backdrop_url (mismo
+ * patrón que game-entry.ts). Usado por saveMovieEntry, que sí puede crear
+ * entradas.
  */
 async function findOrCreateMediaId(
   admin: ReturnType<typeof createAdminClient>,
@@ -35,7 +42,19 @@ async function findOrCreateMediaId(
     throw new Error(findError.message);
   }
 
+  const coverUrl = ref.posterPath ? `${TMDB_IMG_BASE}${ref.posterPath}` : null;
+  const backdropUrl = ref.backdropPath ? `${TMDB_BACKDROP_BASE}${ref.backdropPath}` : null;
+
   if (existingMedia?.id) {
+    await admin
+      .from("media")
+      .update({
+        cover_url: coverUrl,
+        backdrop_url: backdropUrl,
+        content_type: ref.contentType,
+      })
+      .eq("id", existingMedia.id);
+
     return existingMedia.id;
   }
 
@@ -43,9 +62,11 @@ async function findOrCreateMediaId(
     .from("media")
     .insert({
       media_type: ref.mediaType,
+      content_type: ref.contentType,
       title: ref.title,
       original_title: ref.title,
-      cover_url: ref.posterPath ? `${TMDB_IMG_BASE}${ref.posterPath}` : null,
+      cover_url: coverUrl,
+      backdrop_url: backdropUrl,
       release_date: ref.releaseDate,
       summary: ref.synopsis,
       external_source: "tmdb",
@@ -100,15 +121,29 @@ export type SaveMovieEntryInput = MovieMediaRef & {
  * updateFavorite, para no pisar su valor en cada guardado de rating/status.
  */
 export async function saveMovieEntry(input: SaveMovieEntryInput) {
-  const { tmdbId, mediaType, title, releaseDate, posterPath, synopsis, status, rating, notes } = input;
+  const {
+    tmdbId,
+    mediaType,
+    contentType,
+    title,
+    releaseDate,
+    posterPath,
+    backdropPath,
+    synopsis,
+    status,
+    rating,
+    notes,
+  } = input;
 
   const admin = createAdminClient();
   const mediaId = await findOrCreateMediaId(admin, {
     tmdbId,
     mediaType,
+    contentType,
     title,
     releaseDate,
     posterPath,
+    backdropPath,
     synopsis,
   });
 
@@ -142,6 +177,7 @@ export async function saveMovieEntry(input: SaveMovieEntryInput) {
   }
 
   revalidatePath(`/movies/${tmdbId}`);
+  revalidatePath("/movies");
 
   return { mediaId };
 }
@@ -182,6 +218,7 @@ export async function updateFavorite(tmdbId: string, isFavorite: boolean) {
   }
 
   revalidatePath(`/movies/${tmdbId}`);
+  revalidatePath("/movies");
 
   return { updated: true };
 }

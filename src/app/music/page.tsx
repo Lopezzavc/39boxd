@@ -1,26 +1,61 @@
-﻿export default function MusicPage() {
-  return (
-    <div className="container mx-auto max-w-5xl px-4 py-8">
-      <h1 className="text-2xl font-bold tracking-tight text-neutral-900 dark:text-neutral-50 mb-2">
-        Música
-      </h1>
-      <p className="text-sm text-neutral-500 mb-8">
-        Álbumes que has escuchado y puntuado.
-      </p>
+﻿import { createAdminClient } from "@/lib/supabase/admin";
+import MusicGrid from "./MusicGrid";
 
-      <div className="rounded-2xl border border-neutral-200 bg-white p-8 dark:border-neutral-800 dark:bg-neutral-950">
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div
-              key={i}
-              className="aspect-square animate-pulse rounded-lg bg-neutral-200 dark:bg-neutral-800"
-            />
-          ))}
+const USER_ID = "00000000-0000-0000-0000-000000000000";
+
+export default async function MusicPage() {
+  const admin = createAdminClient();
+
+  const { data: entries, error } = await admin
+    .from("user_media_entries")
+    .select(
+      `
+      id,
+      status,
+      rating,
+      is_favorite,
+      finished_at,
+      media:media_id (
+        id,
+        title,
+        cover_url,
+        release_date,
+        external_id
+      )
+    `
+    )
+    .eq("user_id", USER_ID)
+    .eq("media.media_type", "album")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const albums = (entries ?? [])
+    .filter((e) => e.media !== null)
+    .map((e) => ({
+      id: e.id,
+      isFavorite: e.is_favorite,
+      isCompleted: e.status === "completed",
+      isPending: e.status === "backlog",
+      rating: e.rating,
+      title: e.media!.title,
+      coverUrl: e.media!.cover_url,
+      externalId: e.media!.external_id,
+    }));
+
+  return (
+    <div className="container mx-auto max-w-[1400px] px-4 py-8">
+      {albums.length === 0 ? (
+        <div className="rounded-2xl border border-neutral-200 bg-white p-8 dark:border-neutral-800 dark:bg-neutral-950">
+          <p className="text-center text-sm text-neutral-400">
+            Aquí verás los álbumes que has añadido. Usa la lupa del header para buscar y agregar nuevos.
+          </p>
         </div>
-        <p className="mt-6 text-center text-sm text-neutral-400">
-          Próximamente: búsqueda de álbumes (Spotify / Last.fm).
-        </p>
-      </div>
+      ) : (
+        <MusicGrid albums={albums} />
+      )}
     </div>
   );
 }

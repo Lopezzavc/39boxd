@@ -308,7 +308,7 @@ export function Header() {
                 }}
               >
                 <span
-                  className="absolute inset-0 flex items-center justify-center text-sm font-medium blur-[2px] opacity-40 text-neutral-900 dark:text-neutral-50 pointer-events-none select-none"
+                  className="absolute inset-0 flex items-center justify-center text-sm font-medium blur-[2px] opacity-0 text-neutral-900 dark:text-neutral-50 pointer-events-none select-none"
                   aria-hidden="true"
                 >
                   {activeLabel}

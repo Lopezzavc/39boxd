@@ -1,24 +1,85 @@
 .keycap {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  --icon-size: 25px;
+  position: relative;
+  display: inline-flex;
+  width: 40px;
+  height: 40px;
+  border-radius: 5px;
+  background: linear-gradient(180deg, #282828, #202020);
+  box-shadow:
+    inset -4px 0 4px rgba(0, 0, 0, 0.15),
+    inset 0 -4px 4px rgba(0, 0, 0, 0.25),
+    0 0 0 1px rgba(0, 0, 0, 0.75),
+    5px 10px 12px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
   cursor: pointer;
-  transition: transform 150ms ease;
-}
-
-.keycap.pressed {
-  transform: scale(0.9);
+  border: none;
+  padding: 0;
+  transition: transform 0.02s ease-in-out, box-shadow 0.02s ease-in;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .icon {
+  position: absolute;
+  top: 1.5px;
+  left: 3px;
+  bottom: 7px;
+  right: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  z-index: 1;
+  transition: all 0.1s ease-in-out;
 }
 
 .icon svg {
-  width: 100%;
-  height: 100%;
+  width: var(--icon-size);
+  height: auto;
+  display: block;
+}
+
+.keycap::before {
+  content: "";
+  position: absolute;
+  top: 1.5px;
+  left: 2px;
+  bottom: 7px;
+  right: 6px;
+  background: linear-gradient(90deg, #232323, #4a4a4a);
+  border-radius: 5px;
+  box-shadow:
+    -5px -5px 5px rgba(255, 255, 255, 0.25),
+    5px 2.5px 5px rgba(0, 0, 0, 0.15);
+  border-left: 1px solid rgba(0, 0, 0, 0.25);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.25);
+  border-top: 1px solid rgba(0, 0, 0, 0.55);
+  transition: all 0.1s ease-in-out;
+}
+
+.pressed {
+  transform: translateY(1px);
+  box-shadow:
+    inset -2px 0 2px rgba(0, 0, 0, 0.1),
+    inset 0 -2px 2px rgba(0, 0, 0, 0.15),
+    0 0 0 1px rgba(0, 0, 0, 0.5),
+    2.5px 5px 7px rgba(0, 0, 0, 0.3);
+}
+
+.pressed::before {
+  top: 2.5px;
+  left: 2.5px;
+  bottom: 5.5px;
+  right: 5.5px;
+  box-shadow:
+    -2.5px -2.5px 2.5px rgba(255, 255, 255, 0.15),
+    2.5px 1.5px 2.5px rgba(0, 0, 0, 0.1);
+}
+
+.pressed .icon {
+  top: 2.5px;
+  left: 2.5px;
+  bottom: 5.5px;
+  right: 5.5px;
+  transform: translateY(0.5px);
 }

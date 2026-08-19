@@ -16,7 +16,7 @@ const LABEL = "text-[11px] font-semibold uppercase tracking-[0.14em] text-neutra
 // Cantidad de blur (en px) aplicada al backdrop del álbum. Como se usa el
 // mismo cover escalado como fondo (sin una imagen de alta resolución
 // dedicada), el blur disimula el efecto de baja calidad al escalar.
-const BACKDROP_BLUR_PX = 3;
+const BACKDROP_BLUR_PX = 5;
 
 type Album = {
   title: string;
@@ -32,6 +32,7 @@ type Album = {
   releaseDateRaw: string | null;
   nbTracks: number;
   totalDuration: string;
+  fans: number;
   tracks: {
     id: number;
     title: string;
@@ -76,6 +77,10 @@ function formatTotalDuration(seconds: number): string {
   return `${m}m`;
 }
 
+function formatFans(fans: number): string {
+  return new Intl.NumberFormat("es").format(fans);
+}
+
 const RECORD_TYPE_LABELS: Record<string, string> = {
   album: "Álbum",
   ep: "EP",
@@ -86,6 +91,14 @@ const RECORD_TYPE_LABELS: Record<string, string> = {
 function formatRecordType(recordType?: string): string {
   if (!recordType) return "N/D";
   return RECORD_TYPE_LABELS[recordType.toLowerCase()] || recordType;
+}
+
+function buildAotySearchUrl(artist: string, title: string): string {
+  const query = `${artist} ${title}`
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+  return `https://www.albumoftheyear.org/search/?q=${encodeURIComponent(query)}`;
 }
 
 function mapDeezerToAlbum(data: DeezerAlbum): Album {
@@ -111,6 +124,7 @@ function mapDeezerToAlbum(data: DeezerAlbum): Album {
     releaseDateRaw: data.release_date || null,
     nbTracks: data.nb_tracks || tracks.length,
     totalDuration: formatTotalDuration(data.duration || 0),
+    fans: data.fans || 0,
     tracks,
     synopsis: `Álbum de ${data.artist?.name || "artista desconocido"}.`,
     personalRating: null,
@@ -198,7 +212,7 @@ export default async function MusicDetailPage({
                     {album.title}
                   </h1>
                   <KeycapButton
-                    href={`https://www.deezer.com/album/${id}`}
+                    href={buildAotySearchUrl(album.artist, album.title)}
                   />
                 </div>
                 <p className="mt-2.5 text-[15px] font-medium text-neutral-400">
@@ -293,13 +307,17 @@ export default async function MusicDetailPage({
                   ) : (
                     <p>Aún no está en tu biblioteca</p>
                   )}
-                  {album.dateWatched && <p>Completado el {album.dateWatched}</p>}
+                  {album.dateWatched && <p>Escuchado el {album.dateWatched}</p>}
                 </div>
               </div>
             </LiquidGlass>
 
             <section>
               <h2 className={LABEL}>Comunidad</h2>
+              <div className="mt-5">
+                <h3 className={LABEL}>Fans</h3>
+                <p className="mt-1.5 text-[14px] leading-snug text-neutral-300">{formatFans(album.fans)}</p>
+              </div>
             </section>
           </aside>
 

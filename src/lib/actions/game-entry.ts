@@ -11,6 +11,7 @@ type GameMediaRef = {
   title: string;
   releaseDate: string | null;
   coverUrl: string | null;
+  backdropUrl: string | null;
   synopsis: string | null;
 };
 
@@ -30,6 +31,14 @@ async function findOrCreateMediaId(
   }
 
   if (existingMedia?.id) {
+    await admin
+      .from("media")
+      .update({
+        cover_url: ref.coverUrl,
+        backdrop_url: ref.backdropUrl,
+      })
+      .eq("id", existingMedia.id);
+
     return existingMedia.id;
   }
 
@@ -40,6 +49,7 @@ async function findOrCreateMediaId(
       title: ref.title,
       original_title: ref.title,
       cover_url: ref.coverUrl,
+      backdrop_url: ref.backdropUrl,
       release_date: ref.releaseDate,
       summary: ref.synopsis,
       external_source: "igdb",
@@ -81,7 +91,7 @@ export type SaveGameEntryInput = GameMediaRef & {
 };
 
 export async function saveGameEntry(input: SaveGameEntryInput) {
-  const { igdbId, title, releaseDate, coverUrl, synopsis, status, rating, notes } = input;
+  const { igdbId, title, releaseDate, coverUrl, backdropUrl, synopsis, status, rating, notes } = input;
 
   const admin = createAdminClient();
   const mediaId = await findOrCreateMediaId(admin, {
@@ -89,6 +99,7 @@ export async function saveGameEntry(input: SaveGameEntryInput) {
     title,
     releaseDate,
     coverUrl,
+    backdropUrl,
     synopsis,
   });
 
@@ -145,6 +156,36 @@ export async function updateFavorite(igdbId: string, isFavorite: boolean) {
   const { error } = await admin
     .from("user_media_entries")
     .update({ is_favorite: isFavorite })
+    .eq("media_id", mediaId)
+    .eq("user_id", USER_ID);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath(`/games/${igdbId}`);
+
+  return { updated: true };
+}
+
+export async function updateEntryDates(
+  igdbId: string,
+  addedAt: string | null,
+  finishedAt: string | null
+) {
+  const admin = createAdminClient();
+  const mediaId = await findMediaId(admin, igdbId);
+
+  if (!mediaId) {
+    return { updated: false };
+  }
+
+  const { error } = await admin
+    .from("user_media_entries")
+    .update({
+      created_at: addedAt ?? undefined,
+      finished_at: finishedAt,
+    })
     .eq("media_id", mediaId)
     .eq("user_id", USER_ID);
 

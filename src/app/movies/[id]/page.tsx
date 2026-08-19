@@ -17,6 +17,7 @@ import CastRow from "./CastRow";
 import KeycapButton from "./KeycapButton";
 import RatingGauge from "./RatingGauge";
 import MovieActionButtons from "./MovieActionButtons";
+import { getContentType } from "@/lib/tmdb-content-type";
 
 const USER_ID = "00000000-0000-0000-0000-000000000000";
 
@@ -440,6 +441,7 @@ export default async function MovieDetailPage({
   }));
 
   const entryMediaType: "movie" | "series" = mediaType === "tv" ? "series" : "movie";
+  const contentType = getContentType(data, mediaType);
 
   return (
     <div className="-mt-[50px] min-h-screen bg-black text-white">
@@ -496,9 +498,11 @@ export default async function MovieDetailPage({
                 <MovieActionButtons
                   tmdbId={id}
                   mediaType={entryMediaType}
+                  contentType={contentType}
                   title={movie.title}
                   releaseDate={movie.releaseDateRaw}
                   posterPath={movie.posterPath}
+                  backdropPath={data.backdrop_path ?? null}
                   synopsis={movie.synopsis}
                   rating={movie.personalRating}
                   initialFavorite={movie.favorite}
@@ -541,9 +545,11 @@ export default async function MovieDetailPage({
                       await saveMovieEntry({
                         tmdbId: id,
                         mediaType: entryMediaType,
+                        contentType,
                         title: movie.title,
                         releaseDate: movie.releaseDateRaw,
                         posterPath: movie.posterPath,
+                        backdropPath: data.backdrop_path ?? null,
                         synopsis: movie.synopsis,
                         status: movie.watched ? "completed" : "backlog",
                         rating: value,

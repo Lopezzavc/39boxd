@@ -226,7 +226,6 @@ export default async function GameDetailPage({
                     key={g}
                     width="fit-content"
                     height={26}
-                    borderRadius={13}
                     surfaceType="convex_squircle"
                     bezelWidth={14}
                     glassThickness={30}
@@ -237,6 +236,7 @@ export default async function GameDetailPage({
                     tintColor="rgb(40, 40, 40)"
                     tintOpacity={0.4}
                     className="!justify-center items-center px-3"
+                    borderRadius={13}
                   >
                     <span className="text-[11px] font-medium tracking-wide text-neutral-300">{g}</span>
                   </LiquidGlass>
@@ -249,6 +249,7 @@ export default async function GameDetailPage({
                   title={game.title}
                   releaseDate={game.releaseDateRaw}
                   coverUrl={game.coverUrl}
+                  backdropUrl={game.backdrop}
                   synopsis={game.synopsis}
                   rating={game.personalRating}
                   initialFavorite={game.favorite}
@@ -293,6 +294,7 @@ export default async function GameDetailPage({
                         title: game.title,
                         releaseDate: game.releaseDateRaw,
                         coverUrl: game.coverUrl,
+                        backdropUrl: game.backdrop,
                         synopsis: game.synopsis,
                         status: game.watched ? "completed" : "backlog",
                         rating: value,

@@ -25,6 +25,7 @@ export interface DeezerAlbum {
   };
   nb_tracks: number;
   duration: number; // segundos totales
+  fans: number;
   cover_xl?: string;
   tracks: {
     data: DeezerTrack[];

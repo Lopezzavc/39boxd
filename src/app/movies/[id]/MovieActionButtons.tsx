@@ -84,15 +84,19 @@ function toGlowShadow(rgb: string, blurPx: number, alpha: number) {
   ].join(", ");
 }
 
+type ContentType = "movie" | "tv_live_action" | "tv_animated" | "anime";
+
 type MovieActionButtonsProps = {
   initialFavorite: boolean;
   initialWatched: boolean;
   initialPending?: boolean;
   tmdbId: string;
   mediaType: "movie" | "series";
+  contentType: ContentType;
   title: string;
   releaseDate: string | null;
   posterPath: string | null;
+  backdropPath: string | null;
   synopsis: string | null;
   rating: number | null;
 };
@@ -103,9 +107,11 @@ export default function MovieActionButtons({
   initialPending,
   tmdbId,
   mediaType,
+  contentType,
   title,
   releaseDate,
   posterPath,
+  backdropPath,
   synopsis,
   rating,
 }: MovieActionButtonsProps) {
@@ -125,9 +131,11 @@ export default function MovieActionButtons({
       await saveMovieEntry({
         tmdbId,
         mediaType,
+        contentType,
         title,
         releaseDate,
         posterPath,
+        backdropPath,
         synopsis,
         status,
         rating: ratingToSave,

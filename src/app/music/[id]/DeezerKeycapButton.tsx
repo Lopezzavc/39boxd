@@ -3,27 +3,28 @@
 import { useState } from "react";
 import styles from "./KeycapButton.module.css";
 
-interface DeezerKeycapButtonProps {
+interface AotyKeycapButtonProps {
   onClick?: () => void;
   className?: string;
   href?: string;
 }
 
-export default function DeezerKeycapButton({ onClick, className = "", href }: DeezerKeycapButtonProps) {
+export default function AotyKeycapButton({ onClick, className = "", href }: AotyKeycapButtonProps) {
   const [pressed, setPressed] = useState(false);
 
   const commonClass = `${styles.keycap} ${pressed ? styles.pressed : ""} ${className}`;
 
   const icon = (
-    <svg viewBox="0 0 240 240" width="150" height="150" xmlns="http://www.w3.org/2000/svg">
-      <rect width="240" height="240" rx="40" fill="#000000" />
-      <g fill="#A238FF">
-        <rect x="34" y="140" width="26" height="46" />
-        <rect x="70" y="120" width="26" height="66" />
-        <rect x="106" y="94" width="26" height="92" />
-        <rect x="142" y="70" width="26" height="116" />
-        <rect x="178" y="54" width="26" height="132" />
-      </g>
+    <svg version="1.2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 250 250" width="150" height="150">
+      <style>
+        {`.t0 { font-size: 24px; fill: #ffffff; font-weight: 400; font-family: "ArialRoundedMTBold", "Arial Rounded MT"; }`}
+      </style>
+      <text id="AOTY" style={{ transform: "matrix(3.765,0,0,3.765,2.337,93.806)" }}>
+        <tspan x="0" y="17.8" className="t0">A</tspan>
+        <tspan y="17.8" className="t0">O</tspan>
+        <tspan y="17.8" className="t0">T</tspan>
+        <tspan y="17.8" className="t0">Y</tspan>
+      </text>
     </svg>
   );
 
@@ -41,7 +42,7 @@ export default function DeezerKeycapButton({ onClick, className = "", href }: De
     return (
       <a
         href={href}
-        aria-label="Deezer"
+        aria-label="Album of the Year"
         onClick={handleAnchorClick}
         className={commonClass}
       >

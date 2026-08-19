@@ -84,6 +84,7 @@ type GameActionButtonsProps = {
   title: string;
   releaseDate: string | null;
   coverUrl: string | null;
+  backdropUrl: string | null;
   synopsis: string | null;
   rating: number | null;
 };
@@ -96,6 +97,7 @@ export default function GameActionButtons({
   title,
   releaseDate,
   coverUrl,
+  backdropUrl,
   synopsis,
   rating,
 }: GameActionButtonsProps) {
@@ -113,6 +115,7 @@ export default function GameActionButtons({
         title,
         releaseDate,
         coverUrl,
+        backdropUrl,
         synopsis,
         status,
         rating: ratingToSave,
