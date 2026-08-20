@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useId, useRef } from "react";
-import { calculateSpecularHighlight, imageDataToDataURL } from "./liquidGlassUtils";
+import { calculateSpecularHighlight, imageDataToDataURL } from "./liquid-glass/liquidGlassUtils";
 
 export interface SpecularBorderProps {
   children?: React.ReactNode;

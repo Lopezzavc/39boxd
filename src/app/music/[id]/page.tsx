@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import LiquidGlass from "@/components/LiquidGlass";
+import { LiquidGlass } from "@/components/liquid-glass";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { saveMusicEntry } from "@/lib/actions/music-entry";
 import { getDeezerAlbumById } from "@/lib/deezer/search";

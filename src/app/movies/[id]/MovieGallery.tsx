@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import LiquidGlass from "@/components/LiquidGlass";
+import { LiquidGlass } from "@/components/liquid-glass";
 
 function IconChevronLeft() {
   return (

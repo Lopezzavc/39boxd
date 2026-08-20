@@ -4,7 +4,7 @@ import type { CSSProperties, MouseEvent, UIEvent } from "react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import LiquidGlass from "@/components/LiquidGlass";
+import { LiquidGlass } from "@/components/liquid-glass";
 import type { HomeContentType, HomeItem, HomeMediaType } from "./page";
 
 const PAGE_BG_RGB = "rgb(6, 6, 6)";

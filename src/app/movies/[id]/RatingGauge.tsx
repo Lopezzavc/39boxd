@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import LiquidGlass from "@/components/LiquidGlass";
+import { LiquidGlass } from "@/components/liquid-glass";
 
 type RatingGaugeProps = {
   initialValue?: number;

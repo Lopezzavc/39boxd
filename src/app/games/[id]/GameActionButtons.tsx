@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import LiquidGlass from "@/components/LiquidGlass";
+import { LiquidGlass } from "@/components/liquid-glass";
 import { saveGameEntry, updateFavorite } from "@/lib/actions/game-entry";
 import type { MediaStatus } from "@/types/media";
 
