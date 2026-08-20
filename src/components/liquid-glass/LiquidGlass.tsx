@@ -24,6 +24,13 @@ export interface LiquidGlassProps {
   refractionScale?: number;
   specularOpacity?: number;
   blur?: number;
+  /** feColorMatrix `saturate` value applied to the refracted layer.
+   * BUGFIX: this existed in the original demo (`saturation` slider ->
+   * `filterSaturate`) but was dropped in the initial port — the value was
+   * hardcoded to `DEFAULT_LENS_SATURATION` (1.3) directly in JSX with no
+   * prop and no ref, so callers had no way to change it. Now configurable,
+   * default unchanged. */
+  saturation?: number;
   tintColor?: string;
   tintOpacity?: number;
   className?: string;
@@ -72,7 +79,13 @@ const DEFAULT_LENS_SATURATION = 1.3;
 
 function getEffectiveRadius(borderRadius: number, w: number, h: number): number {
   const br = safeNumber(borderRadius, 0, 0, 100000);
-  if (w <= 0 || h <= 0) return 0;
+  // Before the first measurement (`measured` still 0×0), fall back to the
+  // raw (clamped) borderRadius instead of forcing 0 — avoids a one-frame
+  // "square corners" flash on mount. Once `w`/`h` are real, clamp to
+  // min(br, w/2, h/2) as before. `rebuild()` (map geometry) never calls
+  // this with a degenerate size, so this branch only affects the CSS
+  // fallback used for the very first paint.
+  if (w <= 0 || h <= 0) return br;
   return Math.max(0, Math.min(br, w / 2, h / 2));
 }
 
@@ -88,6 +101,7 @@ export default function LiquidGlass({
   refractionScale = 1.5,
   specularOpacity = 1,
   blur = 0.5,
+  saturation = DEFAULT_LENS_SATURATION,
   tintColor = "rgb(255, 255, 255)",
   tintOpacity = 0,
   className = "",
@@ -120,6 +134,7 @@ export default function LiquidGlass({
   const displacementMapRef = useRef<SVGFEDisplacementMapElement>(null);
   const specularAlphaRef = useRef<SVGFEFuncAElement>(null);
   const gaussianBlurRef = useRef<SVGFEGaussianBlurElement>(null);
+  const saturationRef = useRef<SVGFEColorMatrixElement>(null);
 
   const [measured, setMeasured] = useState({ width: 0, height: 0 });
 
@@ -152,16 +167,44 @@ export default function LiquidGlass({
 
   const maximumDisplacementRef = useRef(1);
 
+  // ── Independent SVG attrs that don't affect map geometry (mirrors the
+  // pattern used in LiquidGlassSlider/Switch for specularOpacity/blur). ──
+  useEffect(() => {
+    saturationRef.current?.setAttribute("values", String(safeNumber(saturation, DEFAULT_LENS_SATURATION, 0, 10)));
+  }, [saturation]);
+
   // ── rebuild(): regenerates the displacement/specular maps for the
   // current measured size + current config. Depends only on the config
   // values that actually affect map geometry so unrelated prop changes
-  // (e.g. `pressed`, `active`, `tintOpacity`) never trigger a rebuild. ──
+  // (e.g. `pressed`, `active`, `tintOpacity`) never trigger a rebuild.
+  //
+  // ROOT-CAUSE FIX: this used to measure via `el.getBoundingClientRect()`,
+  // which returns the element's POST-TRANSFORM box in viewport pixels — if
+  // any ancestor (or the element itself) has an in-flight CSS `transform`
+  // (e.g. a carousel animating `scale(...)` on the card this glass lives
+  // in), `getBoundingClientRect()` reports whatever intermediate visual
+  // size that transform produces at the instant it's called. That
+  // intermediate size gets baked into the generated displacement/specular
+  // canvases and the `feImage`/`feDisplacementMap` width/height — and
+  // because `ResizeObserver` (below) only fires on actual LAYOUT size
+  // changes, not on ancestor transforms, nothing ever corrects it. This is
+  // the exact bug: SVG distortion/blur "not appearing" until the card's
+  // slide transform finishes, and the specular map looking undersized
+  // relative to the final rendered box.
+  //
+  // The correct measurement for map geometry is the element's LAYOUT box
+  // (CSS width/height as resolved by the box model), which is completely
+  // unaffected by `transform` on the element or any ancestor — exactly
+  // what `ResizeObserver` itself watches. `offsetWidth`/`offsetHeight`
+  // give that (border-box, integer, transform-immune) without an extra
+  // reflow-forcing `getBoundingClientRect()` call, so `rebuild()` and
+  // `ResizeObserver` are now measuring the exact same quantity and can
+  // never disagree or go stale relative to each other. ──
   const rebuild = useCallback(() => {
     const el = containerRef.current;
     if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const w = Math.round(rect.width);
-    const h = Math.round(rect.height);
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
     if (w <= 0 || h <= 0) return;
 
     setMeasured((prev) => (prev.width === w && prev.height === h ? prev : { width: w, height: h }));
@@ -251,6 +294,37 @@ export default function LiquidGlass({
 
   const getBoundsElement = useCallback((): HTMLElement | null => {
     return backgroundRef?.current ?? containerRef.current?.parentElement ?? null;
+  }, [backgroundRef]);
+
+  // BUGFIX: previously, the clone-fallback renderer only mounted when the
+  // caller explicitly passed `backgroundRef`. In `draggable` mode that's
+  // fine (drag bounds already fall back to `parentElement`), but in the
+  // common static case — "swap a normal container for <LiquidGlass>" —
+  // omitting `backgroundRef` silently meant NO refraction at all on any
+  // non-Chromium browser (the `clone` renderer never ran, so the SVG
+  // filter had nothing to distort). We now fall back to the element's own
+  // parent, mirroring the drag-bounds fallback, so the fallback path works
+  // out of the box without requiring the caller to know about it.
+  const [autoBackgroundEl, setAutoBackgroundEl] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    if (backgroundRef) return; // explicit ref always wins
+    setAutoBackgroundEl(containerRef.current?.parentElement ?? null);
+  }, [backgroundRef]);
+  const autoBackgroundRef = useRef<HTMLElement | null>(null);
+  autoBackgroundRef.current = autoBackgroundEl;
+  const effectiveBackgroundRef = backgroundRef ?? autoBackgroundRef;
+
+  // Dev-only warning (hook always runs — condition is inside the callback,
+  // not around the hook — to respect the rules of hooks).
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    if (!backgroundRef && !containerRef.current?.parentElement) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[LiquidGlass] No `backgroundRef` was provided and no parent element could be found to refract. " +
+          "The glass will render with no visible distortion on browsers without native `backdrop-filter: url()` support (i.e. everything but Chromium)."
+      );
+    }
   }, [backgroundRef]);
 
   const applyPosition = useCallback((x: number, y: number) => {
@@ -469,7 +543,14 @@ export default function LiquidGlass({
     }
   }, [active, hasActiveMode, tintOpacity]);
 
-  const effectiveRadius = getEffectiveRadius(borderRadius, measured.width, measured.height) || safeNumber(borderRadius, 0, 0, 100000);
+  // BUGFIX: this used to recompute the radius with a slightly different
+  // fallback (`|| safeNumber(...)`) than the one `rebuild()` uses for map
+  // geometry, so the very first paint (before `measured` is populated)
+  // could show a CSS radius that didn't match the displacement map's
+  // radius. Now both paths go through the exact same function with the
+  // exact same fallback semantics (0×0 -> 0, matching `getEffectiveRadius`
+  // itself), so there is a single source of truth.
+  const effectiveRadius = getEffectiveRadius(borderRadius, measured.width, measured.height);
 
   const sizeStyle: React.CSSProperties = {
     width: typeof width === "number" ? `${width}px` : width,
@@ -478,7 +559,8 @@ export default function LiquidGlass({
   };
 
   const filterUrl = `url(#${filterId})`;
-  const clonePositionActive = !usingBackdrop && (draggable || Boolean(backgroundRef));
+  const hasBackground = Boolean(backgroundRef) || Boolean(autoBackgroundEl);
+  const clonePositionActive = !usingBackdrop && (draggable || hasBackground);
 
   return (
     <div
@@ -511,7 +593,7 @@ export default function LiquidGlass({
               yChannelSelector="G"
               result="displaced"
             />
-            <feColorMatrix in="displaced" type="saturate" values={String(DEFAULT_LENS_SATURATION)} result="displaced_saturated" />
+            <feColorMatrix ref={saturationRef} in="displaced" type="saturate" values={String(saturation)} result="displaced_saturated" />
             <feImage ref={specularImgRef} x="0" y="0" result="specular_layer" preserveAspectRatio="none" />
             <feComponentTransfer in="specular_layer" result="specular_faded">
               <feFuncA ref={specularAlphaRef} type="linear" slope={specularOpacity} />
@@ -521,11 +603,15 @@ export default function LiquidGlass({
         </defs>
       </svg>
 
-      {/* Fallback clone renderer — only does work while active (non-backdrop mode). */}
-      {backgroundRef && (
+      {/* Fallback clone renderer — only does work while active (non-backdrop
+          mode). Uses the explicit `backgroundRef` when given, otherwise
+          auto-falls-back to the container's own parent element so the
+          fallback path works without any extra prop (see `hasBackground`
+          above). */}
+      {hasBackground && (
         <GlassContentClone
           ref={cloneRef}
-          backgroundRef={backgroundRef}
+          backgroundRef={effectiveBackgroundRef}
           glassRef={containerRef}
           filterUrl={filterUrl}
           active={clonePositionActive}

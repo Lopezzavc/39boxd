@@ -575,20 +575,18 @@ function MediaRow({
 /* ── HeroCarousel: stack lateral estilo Apple TV ────────────────────── */
 
 const CAROUSEL_AUTOPLAY_MS = 6500;
-// Easing "spring" tipo Apple (el mismo timing que usan sheets/overlays de macOS/iOS).
 const CAROUSEL_EASE = "cubic-bezier(0.32, 0.72, 0, 1)";
 const CAROUSEL_DURATION_MS = 850;
-const CAROUSEL_GLASS_DELAY_MS = 90; // el panel de texto sigue un beat después del fondo, no en simultáneo
+const CAROUSEL_GLASS_DELAY_MS = 90;
 
-// Cuántas cards se ven a cada lado, y cuánto se desplazan/escalan/oscurecen por nivel.
 const CAROUSEL_SIDE_DEPTH = 3;
-const CAROUSEL_SIDE_GAP = 0.2; // fracción del ancho del hero que se desplaza cada nivel lateral
+const CAROUSEL_SIDE_GAP = 0.15;
 const CAROUSEL_SIDE_SCALE_STEP = 0.15;
-const CAROUSEL_SIDE_BLUR_STEP = 3.5; // px de blur por nivel lateral
-const CAROUSEL_SIDE_DIM_STEP = 0.22; // oscurecimiento por nivel lateral
+const CAROUSEL_SIDE_BLUR_STEP = 5;
+const CAROUSEL_SIDE_DIM_STEP = 0.3;
 
 type HeroCardGeometry = {
-  offset: number; // ...-2,-1,0,1,2... posición relativa a la activa
+  offset: number;
   translateXPct: number;
   scale: number;
   blurPx: number;
@@ -611,34 +609,6 @@ function geometryForOffset(offset: number): HeroCardGeometry {
   };
 }
 
-// El panel de vidrio tiene un tamaño FIJO (no derivado del texto ni del DOM en movimiento).
-// Esto es intencional: es la única forma de que LiquidGlass —que reconstruye su mapa de
-// desplazamiento vía ResizeObserver leyendo getBoundingClientRect()— nunca compita con una
-// transición CSS en curso. Un tamaño fijo por breakpoint es exactamente lo que hace Apple en
-// sus overlays de vidrio (el panel no "respira" con el contenido).
-const GLASS_PANEL_SIZE = { width: 380, height: 118 };
-const GLASS_PANEL_SIZE_ALBUM = { width: 300, height: 118 };
-
-// El glass real solo se monta una vez que la card lleva el tiempo de su propia transición de
-// entrada siendo la activa: así su ResizeObserver mide un contenedor ya estable, nunca uno que
-// todavía se está moviendo. Si el usuario cambia de card antes de que venza el timer, se cancela.
-const GLASS_MOUNT_DELAY_MS = CAROUSEL_DURATION_MS + 80;
-
-function useDelayedMount(active: boolean, delayMs: number) {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    if (!active) {
-      setMounted(false);
-      return;
-    }
-    const timer = setTimeout(() => setMounted(true), delayMs);
-    return () => clearTimeout(timer);
-  }, [active, delayMs]);
-
-  return mounted;
-}
-
 function HeroStackCard({
   item,
   contextLabel,
@@ -656,10 +626,27 @@ function HeroStackCard({
   const { translateXPct, scale, blurPx, dim, z, visible } = geometry;
   const isAlbum = item.mediaType === "album";
 
-  // El glass solo se monta cuando: (a) esta card es la activa, y (b) ya pasó el tiempo de
-  // asentamiento — con la pestaña en segundo plano los timers de setTimeout se pausan/retrasan
-  // igual que las animaciones CSS, así que ambos quedan sincronizados al volver a foco.
-  const showGlass = useDelayedMount(isActive, GLASS_MOUNT_DELAY_MS);
+  const panelContent = (
+    <div>
+      <p className="text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: SUBTITLE_COLOR_RGB }}>
+        {MEDIA_TYPE_LABEL[item.mediaType]} · {contextLabel}
+      </p>
+      <h2
+        className="mt-1 max-w-[280px] truncate text-2xl font-semibold leading-[1.05] tracking-[-0.02em] sm:max-w-[420px] sm:text-3xl"
+        style={{ color: TITLE_COLOR_RGB }}
+      >
+        {item.title}
+      </h2>
+      {item.rating !== null && (
+        <p className="mt-2 text-lg font-semibold tabular-nums" style={{ color: getRatingColor(item.rating) }}>
+          {formatRating(item.rating)}
+          <span className="ml-1 text-sm font-medium" style={{ color: HERO_META_RGB }}>
+            / 10
+          </span>
+        </p>
+      )}
+    </div>
+  );
 
   return (
     <div
@@ -738,58 +725,39 @@ function HeroStackCard({
               pointerEvents: isActive ? "auto" : "none",
             }}
           >
-            {/* Mientras el glass real no está montado (card recién activada), se muestra un
-                panel sólido idéntico en forma — sin salto visual — para no dejar el título
-                flotando sin fondo durante el delay de asentamiento. */}
-            <div
-              className="relative overflow-hidden rounded-[20px]"
-              style={{
-                width: isAlbum ? GLASS_PANEL_SIZE_ALBUM.width : GLASS_PANEL_SIZE.width,
-                height: GLASS_PANEL_SIZE.height,
-                marginLeft: isAlbum ? 152 : 0,
-                backgroundColor: showGlass ? "transparent" : "rgba(20, 20, 20, 0.55)",
-              }}
-            >
-              {showGlass && (
-                <div className="absolute inset-0">
-                  <LiquidGlass
-                    width={isAlbum ? GLASS_PANEL_SIZE_ALBUM.width : GLASS_PANEL_SIZE.width}
-                    height={GLASS_PANEL_SIZE.height}
-                    borderRadius={20}
-                    surfaceType="convex_squircle"
-                    bezelWidth={22}
-                    glassThickness={44}
-                    refractiveIndex={1.5}
-                    refractionScale={1.6}
-                    specularOpacity={0.5}
-                    blur={1.6}
-                    tintColor="rgb(20, 20, 20)"
-                    tintOpacity={0.42}
-                    className="!p-0"
-                  />
-                </div>
-              )}
-              <div className="pointer-events-none absolute inset-0 flex items-center px-6 py-4 sm:px-7 sm:py-5">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: SUBTITLE_COLOR_RGB }}>
-                    {MEDIA_TYPE_LABEL[item.mediaType]} · {contextLabel}
-                  </p>
-                  <h2
-                    className="mt-1 max-w-xs truncate text-2xl font-semibold leading-[1.05] tracking-[-0.02em] sm:text-3xl"
-                    style={{ color: TITLE_COLOR_RGB }}
-                  >
-                    {item.title}
-                  </h2>
-                  {item.rating !== null && (
-                    <p className="mt-2 text-lg font-semibold tabular-nums" style={{ color: getRatingColor(item.rating) }}>
-                      {formatRating(item.rating)}
-                      <span className="ml-1 text-sm font-medium" style={{ color: HERO_META_RGB }}>
-                        / 10
-                      </span>
-                    </p>
-                  )}
-                </div>
-              </div>
+            <div style={{ marginLeft: isAlbum ? 152 : 0 }} className="inline-block align-top">
+              {/*
+                `LiquidGlass` is always mounted (same as the text panel
+                above it) instead of being gated behind a mount delay — its
+                appearance is purely driven by the opacity/transform on the
+                wrapper above, synced with `CAROUSEL_GLASS_DELAY_MS`, same
+                as the text.
+
+                Correctness of its internal geometry (displacement/specular
+                maps, blur) while the ancestor card animates `scale(...)`
+                is now handled inside `LiquidGlass` itself: `rebuild()`
+                measures with `offsetWidth`/`offsetHeight` (layout box),
+                which — unlike `getBoundingClientRect()` — is immune to any
+                `transform` on the element or its ancestors. No delay,
+                remount, or transition-tracking is needed here anymore; see
+                `LiquidGlass.tsx › rebuild()` for the root-cause fix.
+              */}
+              <LiquidGlass
+                width="fit-content"
+                height="fit-content"
+                borderRadius={20}
+                surfaceType="convex_squircle"
+                bezelWidth={25}
+                glassThickness={50}
+                refractiveIndex={1.5}
+                refractionScale={1.5}
+                specularOpacity={0.3}
+                blur={1}
+                tintColor="rgb(20, 20, 20)"
+                tintOpacity={0.3}
+              >
+                <div className="px-6 py-4 sm:px-7 sm:py-5">{panelContent}</div>
+              </LiquidGlass>
             </div>
           </div>
         </div>
@@ -810,22 +778,22 @@ function CarouselArrowButton({
       type="button"
       onClick={onClick}
       aria-label={direction === "left" ? "Anterior" : "Siguiente"}
-      className={`absolute top-1/2 z-[200] -translate-y-1/2 ${direction === "left" ? "left-2 sm:-left-4" : "right-2 sm:-right-4"}`}
+      className={`absolute top-1/2 z-[110] -translate-y-1/2 ${direction === "left" ? "left-2 sm:-left-4" : "right-2 sm:-right-4"}`}
     >
       <LiquidGlass
         width={48}
         height={48}
         borderRadius={24}
         surfaceType="convex_circle"
-        bezelWidth={16}
-        glassThickness={60}
-        refractiveIndex={1.45}
-        refractionScale={1.3}
-        specularOpacity={0.65}
-        blur={0.8}
-        tintColor="rgb(10, 10, 10)"
+        bezelWidth={10}
+        glassThickness={50}
+        refractiveIndex={1.5}
+        refractionScale={1.5}
+        specularOpacity={0.3}
+        blur={1}
+        tintColor="rgb(20, 20, 20)"
         tintOpacity={0.3}
-        className="!p-0 transition-transform duration-200 hover:scale-[1.06] active:scale-[0.96]"
+        className="transition-transform duration-200 hover:scale-[1.06] active:scale-[0.96]"
       >
         <div className="flex h-full w-full items-center justify-center text-white/90">
           <ChevronIcon direction={direction} className="h-6 w-6" />
@@ -861,9 +829,11 @@ function HeroCarousel({ items, contextLabel }: { items: HomeItem[]; contextLabel
   if (count === 0 || !activeItem) return null;
 
   return (
-    <div className="relative" onMouseEnter={() => setIsPaused(true)} onMouseLeave={() => setIsPaused(false)}>
-      {/* Mismo alto que antes; el ancho se deriva del ratio 21:9 en vez de estirarse al contenedor,
-          dejando "railes" a los lados donde respira el stack. */}
+    <div
+      className="relative isolate"
+      onMouseEnter={() => setIsPaused(true)}
+      onMouseLeave={() => setIsPaused(false)}
+    >
       <div className="relative mx-auto aspect-[21/9] w-full max-w-[1120px] sm:aspect-[3/1]">
         {items.map((item, i) => {
           let offset = i - activeIndex;
@@ -1024,7 +994,7 @@ export default function HomeSections({
     <div className="relative min-h-screen" style={{ backgroundColor: PAGE_BG_RGB }}>
       <div className="container mx-auto max-w-[1400px] px-6 pb-24 pt-8 sm:px-10">
         <div className="space-y-5">
-          <div className="pt-0">
+          <div className="pt-5">
             <HeroCarousel items={heroItems} contextLabel="Pendiente" />
           </div>
 
