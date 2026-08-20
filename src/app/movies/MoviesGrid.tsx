@@ -22,7 +22,7 @@ type MovieItem = {
   contentType: ContentType | null;
 };
 
-const BACKDROP_BLUR_PX = 10;
+const BACKDROP_BLUR_PX = 7;
 const BACKDROP_TINT_OPACITY = 0.7;
 
 const BACKDROP_TRANSITION_MS = 500;
@@ -116,6 +116,29 @@ function getRatingColor(rating: number): string {
   return RATING_COLOR_STOPS[RATING_COLOR_STOPS.length - 1]!.rgb;
 }
 
+/**
+ * Precarga en segundo plano una lista de URLs de imagen usando el cache
+ * nativo del navegador (new Image()). Se usa para que, al hacer hover sobre
+ * una card, el backdrop ya esté disponible en cache y no haya delay/flash al
+ * cambiar de una card a otra.
+ */
+function usePreloadImages(urls: (string | null)[]) {
+  useEffect(() => {
+    const uniqueUrls = Array.from(new Set(urls.filter((u): u is string => Boolean(u))));
+    const images = uniqueUrls.map((url) => {
+      const img = new window.Image();
+      img.src = url;
+      return img;
+    });
+    return () => {
+      images.forEach((img) => {
+        img.src = "";
+      });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urls.join("|")]);
+}
+
 function StarIcon({ className, style }: { className?: string; style?: CSSProperties }) {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" className={className} style={style}>
@@ -207,7 +230,7 @@ function SortDropdown({
         glassThickness={34}
         refractiveIndex={1.5}
         refractionScale={1.5}
-        specularOpacity={0.5}
+        specularOpacity={0.3}
         blur={1.5}
         tintColor="rgb(40, 40, 40)"
         tintOpacity={isOpen ? 0.65 : 0.5}
@@ -304,7 +327,7 @@ function TypeFilterDropdown({
         glassThickness={34}
         refractiveIndex={1.5}
         refractionScale={1.5}
-        specularOpacity={0.5}
+        specularOpacity={0.3}
         blur={1.5}
         tintColor="rgb(40, 40, 40)"
         tintOpacity={isOpen ? 0.65 : 0.5}
@@ -516,6 +539,8 @@ export default function MoviesGrid({ movies }: { movies: MovieItem[] }) {
   const [layerB, setLayerB] = useState<Layer | null>(null);
   const [activeLayer, setActiveLayer] = useState<"a" | "b">("a");
 
+  usePreloadImages(useMemo(() => movies.map((m) => m.backdropUrl), [movies]));
+
   function showBackdrop(url: string) {
     if (activeLayer === "a") {
       setLayerB({ url, visible: false });
@@ -567,7 +592,10 @@ export default function MoviesGrid({ movies }: { movies: MovieItem[] }) {
     return filtered;
   }, [movies, sortOrder, typeFilter]);
 
-  const pendingMovies = movies.filter((m) => m.isPending);
+  const pendingMovies = useMemo(
+    () => movies.filter((m) => m.isPending && matchesTypeFilter(m.contentType, typeFilter)),
+    [movies, typeFilter]
+  );
 
   return (
     <div className="relative">
@@ -636,24 +664,30 @@ export default function MoviesGrid({ movies }: { movies: MovieItem[] }) {
         )}
       </section>
 
-      {pendingMovies.length > 0 && (
+      {movies.some((m) => m.isPending) && (
         <section>
           <h2 className={SECTION_LABEL} style={{ color: SECTION_LABEL_COLOR_RGB }}>
             Pendientes
           </h2>
-          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
-            {pendingMovies.map((movie, index) => (
-              <MovieCard
-                key={movie.id}
-                movie={movie}
-                index={index}
-                showGradientOnHover={false}
-                isHovered={hovered?.id === movie.id}
-                onEnter={() => handleEnter(movie)}
-                onLeave={handleLeave}
-              />
-            ))}
-          </div>
+          {pendingMovies.length > 0 ? (
+            <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
+              {pendingMovies.map((movie, index) => (
+                <MovieCard
+                  key={movie.id}
+                  movie={movie}
+                  index={index}
+                  showGradientOnHover={false}
+                  isHovered={hovered?.id === movie.id}
+                  onEnter={() => handleEnter(movie)}
+                  onLeave={handleLeave}
+                />
+              ))}
+            </div>
+          ) : (
+            <p className="mt-4 text-sm" style={{ color: PLACEHOLDER_TEXT_RGB }}>
+              No hay nada en esta categoría todavía.
+            </p>
+          )}
         </section>
       )}
     </div>

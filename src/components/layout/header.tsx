@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useLayoutEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { X } from "lucide-react";
-import LiquidGlass from "@/components/LiquidGlass";
+import { LiquidGlass } from "@/components/liquid-glass";
 import { Spring } from "@/lib/springUtils";
 import { SearchModal } from "@/components/search/SearchModal";
 
@@ -53,6 +53,8 @@ export function Header() {
   const debounceRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const navOffsetRef = useRef({ left: 0, top: 0 });
 
+  // Nav-pill position spring — unrelated to LiquidGlass's own internal
+  // Spring physics; this just animates the little active-tab background.
   const springsRef = useRef({
     left: new Spring(0, 260, 14),
     top: new Spring(0, 260, 14),
@@ -316,6 +318,12 @@ export function Header() {
               </div>
             )}
 
+            {/*
+              Topbar: plain, non-draggable glass container. `draggable` is
+              simply omitted (defaults to false) and no `backgroundRef` is
+              passed — see the note at the bottom of this file about what
+              that means for non-Chromium fallback rendering.
+            */}
             <LiquidGlass
               width="fit-content"
               height={50}
@@ -325,11 +333,11 @@ export function Header() {
               glassThickness={50}
               refractiveIndex={1.5}
               refractionScale={1.5}
-              specularOpacity={0.5}
+              specularOpacity={0.3}
               blur={1.5}
               tintColor="rgb(40, 40, 40)"
               tintOpacity={0.5}
-              className="!justify-start items-center pl-6 pr-[9.3px]"
+              className="pl-6 pr-[9.3px]"
             >
               <div className="flex items-center translate-y-[0.5px]">
                 <div className="flex items-center gap-7">
@@ -419,7 +427,7 @@ export function Header() {
                     blur={1.5}
                     tintColor="rgb(40, 40, 40)"
                     tintOpacity={0.5}
-                    className="!flex !justify-center !items-center"
+                    className="flex justify-center items-center"
                   >
                     <span className="text-sm font-medium tabular-nums text-neutral-900 dark:text-neutral-50 w-full text-center">
                       {currentIndex + 1}/{total}
@@ -446,7 +454,7 @@ export function Header() {
               blur={1.5}
               tintColor="rgb(40, 40, 40)"
               tintOpacity={0.5}
-              className="!justify-center items-center cursor-pointer"
+              className="flex justify-center items-center cursor-pointer"
             >
               <button
                 onClick={handleCloseModal}

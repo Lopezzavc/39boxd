@@ -18,7 +18,7 @@ type GameItem = {
   externalId: string;
 };
 
-const BACKDROP_BLUR_PX = 10;
+const BACKDROP_BLUR_PX = 7;
 const BACKDROP_TINT_OPACITY = 0.7;
 
 const BACKDROP_TRANSITION_MS = 500;
@@ -96,6 +96,29 @@ function getRatingColor(rating: number): string {
   }
 
   return RATING_COLOR_STOPS[RATING_COLOR_STOPS.length - 1]!.rgb;
+}
+
+/**
+ * Precarga en segundo plano una lista de URLs de imagen usando el cache
+ * nativo del navegador (new Image()). Se usa para que, al hacer hover sobre
+ * una card, el backdrop ya esté disponible en cache y no haya delay/flash al
+ * cambiar de una card a otra.
+ */
+function usePreloadImages(urls: (string | null)[]) {
+  useEffect(() => {
+    const uniqueUrls = Array.from(new Set(urls.filter((u): u is string => Boolean(u))));
+    const images = uniqueUrls.map((url) => {
+      const img = new window.Image();
+      img.src = url;
+      return img;
+    });
+    return () => {
+      images.forEach((img) => {
+        img.src = "";
+      });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urls.join("|")]);
 }
 
 function StarIcon({ className, style }: { className?: string; style?: CSSProperties }) {
@@ -189,7 +212,7 @@ function SortDropdown({
         glassThickness={34}
         refractiveIndex={1.5}
         refractionScale={1.5}
-        specularOpacity={0.5}
+        specularOpacity={0.3}
         blur={1.5}
         tintColor="rgb(40, 40, 40)"
         tintOpacity={isOpen ? 0.65 : 0.5}
@@ -400,6 +423,8 @@ export default function GamesGrid({ games }: { games: GameItem[] }) {
   const [layerA, setLayerA] = useState<Layer | null>(null);
   const [layerB, setLayerB] = useState<Layer | null>(null);
   const [activeLayer, setActiveLayer] = useState<"a" | "b">("a");
+
+  usePreloadImages(useMemo(() => games.map((g) => g.backdropUrl), [games]));
 
   function showBackdrop(url: string) {
     if (activeLayer === "a") {
