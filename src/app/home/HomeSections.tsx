@@ -625,11 +625,24 @@ function HeroStackCard({
   const backgroundUrl = item.backdropUrl ?? item.coverUrl;
   const { translateXPct, scale, blurPx, dim, z, visible } = geometry;
   const isAlbum = item.mediaType === "album";
-
+ 
+  // Wraps only the content that must be refracted (image + fixed
+  // gradients). Deliberately does NOT include anything with an animated
+  // inline `transform`/`opacity` on itself — GlassContentClone's
+  // MutationObserver watches `attributes: true` on this subtree, so any
+  // node here whose `style` changes every animation frame would trigger a
+  // full `cloneNode(true)` re-clone every frame. The zoom-on-offset effect
+  // is applied one level up (see `zoomWrapperStyle` below), outside this ref.
+  const backgroundRef = useRef<HTMLDivElement>(null);
+ 
   const panelContent = (
     <div>
-      <p className="text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: SUBTITLE_COLOR_RGB }}>
-        {MEDIA_TYPE_LABEL[item.mediaType]} · {contextLabel}
+      <p className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: SUBTITLE_COLOR_RGB }}>
+        {MEDIA_TYPE_LABEL[item.mediaType]} ·{" "}
+        <span className="inline-flex items-center gap-1" style={{ color: PENDING_COLOR_RGB }}>
+          {contextLabel}
+          <ClockIcon className="h-3 w-3" />
+        </span>
       </p>
       <h2
         className="mt-1 max-w-[280px] truncate text-2xl font-semibold leading-[1.05] tracking-[-0.02em] sm:max-w-[420px] sm:text-3xl"
@@ -647,7 +660,7 @@ function HeroStackCard({
       )}
     </div>
   );
-
+ 
   return (
     <div
       onClick={!isActive ? onSelect : undefined}
@@ -678,22 +691,34 @@ function HeroStackCard({
         aria-hidden={!isActive}
       >
         <div className="relative h-full w-full" style={{ backgroundColor: PLACEHOLDER_BG_RGB }}>
-          {backgroundUrl && (
-            <Image
-              src={backgroundUrl}
-              alt={item.title}
-              fill
-              priority={isActive}
-              sizes="1000px"
-              className={isAlbum ? "object-cover blur-2xl scale-110 opacity-70" : "object-cover"}
-              style={{
-                transform: `scale(${1 + Math.abs(geometry.offset) * 0.03})`,
-                transition: `transform ${CAROUSEL_DURATION_MS}ms ${CAROUSEL_EASE}`,
-              }}
-            />
-          )}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/15 to-black/10" />
-          <div className="absolute inset-0 bg-gradient-to-r from-black/55 via-transparent to-transparent" />
+          {/* Refractable layer: image + fixed gradients only, no animated
+              inline styles on any node inside. This is what backgroundRef
+              points at. */}
+          <div ref={backgroundRef} className="absolute inset-0">
+            {backgroundUrl && (
+              <div
+                className="absolute inset-0"
+                style={{
+                  transform: `scale(${1 + Math.abs(geometry.offset) * 0.03})`,
+                  transition: `transform ${CAROUSEL_DURATION_MS}ms ${CAROUSEL_EASE}`,
+                }}
+              >
+                <Image
+                  src={backgroundUrl}
+                  alt={item.title}
+                  fill
+                  priority={isActive}
+                  sizes="1000px"
+                  className={isAlbum ? "object-cover blur-2xl scale-110 opacity-70" : "object-cover"}
+                />
+              </div>
+            )}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/15 to-black/10" />
+            <div className="absolute inset-0 bg-gradient-to-r from-black/55 via-transparent to-transparent" />
+          </div>
+ 
+          {/* Dim overlay: animated opacity, deliberately OUTSIDE backgroundRef
+              so its per-frame `style` mutations don't trigger re-clones. */}
           <div
             aria-hidden
             className="absolute inset-0 bg-black"
@@ -702,7 +727,7 @@ function HeroStackCard({
               transition: `opacity ${CAROUSEL_DURATION_MS}ms ${CAROUSEL_EASE}`,
             }}
           />
-
+ 
           {isAlbum && item.coverUrl && (
             <div
               className="absolute bottom-6 left-6 h-28 w-28 overflow-hidden rounded-xl shadow-2xl ring-1 ring-white/10 transition-opacity sm:h-36 sm:w-36"
@@ -711,7 +736,7 @@ function HeroStackCard({
               <Image src={item.coverUrl} alt="" fill sizes="144px" className="object-cover" />
             </div>
           )}
-
+ 
           <div
             className="absolute inset-x-6 bottom-6 sm:inset-x-8 sm:bottom-8"
             style={{
@@ -726,38 +751,26 @@ function HeroStackCard({
             }}
           >
             <div style={{ marginLeft: isAlbum ? 152 : 0 }} className="inline-block align-top">
-              {/*
-                `LiquidGlass` is always mounted (same as the text panel
-                above it) instead of being gated behind a mount delay — its
-                appearance is purely driven by the opacity/transform on the
-                wrapper above, synced with `CAROUSEL_GLASS_DELAY_MS`, same
-                as the text.
-
-                Correctness of its internal geometry (displacement/specular
-                maps, blur) while the ancestor card animates `scale(...)`
-                is now handled inside `LiquidGlass` itself: `rebuild()`
-                measures with `offsetWidth`/`offsetHeight` (layout box),
-                which — unlike `getBoundingClientRect()` — is immune to any
-                `transform` on the element or its ancestors. No delay,
-                remount, or transition-tracking is needed here anymore; see
-                `LiquidGlass.tsx › rebuild()` for the root-cause fix.
-              */}
-              <LiquidGlass
-                width="fit-content"
-                height="fit-content"
-                borderRadius={20}
-                surfaceType="convex_squircle"
-                bezelWidth={25}
-                glassThickness={50}
-                refractiveIndex={1.5}
-                refractionScale={1.5}
-                specularOpacity={0.3}
-                blur={1}
-                tintColor="rgb(20, 20, 20)"
-                tintOpacity={0.3}
-              >
-                <div className="px-6 py-4 sm:px-7 sm:py-5">{panelContent}</div>
-              </LiquidGlass>
+              {isActive && (
+                <LiquidGlass
+                  renderMode="clone"
+                  backgroundRef={backgroundRef}
+                  width="fit-content"
+                  height="fit-content"
+                  borderRadius={20}
+                  surfaceType="convex_squircle"
+                  bezelWidth={25}
+                  glassThickness={100}
+                  refractiveIndex={1.5}
+                  refractionScale={1.5}
+                  specularOpacity={0.3}
+                  blur={3}
+                  tintColor="rgb(20, 20, 20)"
+                  tintOpacity={0.2}
+                >
+                  <div className="px-6 py-4 sm:px-7 sm:py-5">{panelContent}</div>
+                </LiquidGlass>
+              )}
             </div>
           </div>
         </div>

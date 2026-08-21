@@ -192,7 +192,7 @@ export default function GameActionButtons({
           glassThickness={44}
           refractiveIndex={1.5}
           refractionScale={1.5}
-          specularOpacity={0.5}
+          specularOpacity={0.3}
           blur={1.5}
           tintColor={favorite ? FAVORITE_TINT_ACTIVE : FAVORITE_TINT_INACTIVE}
           tintOpacity={favorite ? FAVORITE_TINT_OPACITY_ACTIVE : FAVORITE_TINT_OPACITY_INACTIVE}
@@ -244,7 +244,7 @@ export default function GameActionButtons({
           glassThickness={44}
           refractiveIndex={1.5}
           refractionScale={1.5}
-          specularOpacity={0.5}
+          specularOpacity={0.3}
           blur={1.5}
           tintColor={watched ? WATCHED_TINT_ACTIVE : WATCHED_TINT_INACTIVE}
           tintOpacity={watched ? WATCHED_TINT_OPACITY_ACTIVE : WATCHED_TINT_OPACITY_INACTIVE}
@@ -296,7 +296,7 @@ export default function GameActionButtons({
           glassThickness={44}
           refractiveIndex={1.5}
           refractionScale={1.5}
-          specularOpacity={0.5}
+          specularOpacity={0.3}
           blur={1.5}
           tintColor={pending ? PENDING_TINT_ACTIVE : PENDING_TINT_INACTIVE}
           tintOpacity={pending ? PENDING_TINT_OPACITY_ACTIVE : PENDING_TINT_OPACITY_INACTIVE}

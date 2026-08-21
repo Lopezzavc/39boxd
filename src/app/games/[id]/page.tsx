@@ -231,7 +231,7 @@ export default async function GameDetailPage({
                     glassThickness={30}
                     refractiveIndex={1.5}
                     refractionScale={1.5}
-                    specularOpacity={0.5}
+                    specularOpacity={0.3}
                     blur={1.5}
                     tintColor="rgb(40, 40, 40)"
                     tintOpacity={0.4}
@@ -274,7 +274,7 @@ export default async function GameDetailPage({
               glassThickness={50}
               refractiveIndex={1.5}
               refractionScale={1.5}
-              specularOpacity={0.5}
+              specularOpacity={0.3}
               blur={1.5}
               tintColor="rgb(40, 40, 40)"
               tintOpacity={0.2}
@@ -329,7 +329,7 @@ export default async function GameDetailPage({
                       glassThickness={36}
                       refractiveIndex={1.5}
                       refractionScale={1.5}
-                      specularOpacity={0.5}
+                      specularOpacity={0.3}
                       blur={1.5}
                       tintColor="rgb(40, 40, 40)"
                       tintOpacity={0.3}

@@ -14,7 +14,7 @@ const categories = [
   { label: "Juegos", href: "/games" },
   { label: "Películas", href: "/movies" },
   { label: "Música", href: "/music" },
-  { label: "Stats", href: "/stats" },
+  
 ];
 
 interface SearchResult {
@@ -338,6 +338,7 @@ export function Header() {
               tintColor="rgb(40, 40, 40)"
               tintOpacity={0.5}
               className="pl-6 pr-[9.3px]"
+              saturation={1}
             >
               <div className="flex items-center translate-y-[0.5px]">
                 <div className="flex items-center gap-7">
@@ -423,7 +424,7 @@ export function Header() {
                     glassThickness={50}
                     refractiveIndex={1.5}
                     refractionScale={1.5}
-                    specularOpacity={0.5}
+                    specularOpacity={0.3}
                     blur={1.5}
                     tintColor="rgb(40, 40, 40)"
                     tintOpacity={0.5}
@@ -450,7 +451,7 @@ export function Header() {
               glassThickness={50}
               refractiveIndex={1.5}
               refractionScale={1.5}
-              specularOpacity={0.5}
+              specularOpacity={0.3}
               blur={1.5}
               tintColor="rgb(40, 40, 40)"
               tintOpacity={0.5}
