@@ -56,8 +56,9 @@ export function updateSprings<T extends Record<string, Spring>>(springs: T, dt: 
   const values = {} as { [K in keyof T]: number };
   let allSettled = true;
   for (const key of Object.keys(springs) as (keyof T)[]) {
-    values[key] = springs[key].update(dt);
-    if (!springs[key].isSettled()) allSettled = false;
+    const spring = springs[key]!;
+    values[key] = spring.update(dt);
+    if (!spring.isSettled()) allSettled = false;
   }
   return { values, allSettled };
 }
