@@ -279,6 +279,42 @@ function buildSeasonRows(
   });
 }
 
+async function loadUserEntry(id: string) {
+  try {
+    const admin = createAdminClient();
+    const { data: mediaRow } = await admin
+      .from("media")
+      .select("id")
+      .eq("external_source", "tmdb")
+      .eq("external_id", id)
+      .maybeSingle();
+
+    if (!mediaRow?.id) return null;
+
+    const { data: entry } = await admin
+      .from("user_media_entries")
+      .select("rating, is_favorite, status, created_at, finished_at")
+      .eq("media_id", mediaRow.id)
+      .eq("user_id", USER_ID)
+      .maybeSingle();
+
+    return entry ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveTvdbId(data: any, id: string, mediaType: "movie" | "tv"): Promise<string | null> {
+  if (mediaType === "tv" && data.external_ids?.tvdb_id) {
+    return String(data.external_ids.tvdb_id);
+  }
+  try {
+    return await getTvdbIdFromTmdb(id, mediaType);
+  } catch {
+    return null;
+  }
+}
+
 export default async function MovieDetailPage({
   params,
   searchParams,
@@ -295,44 +331,18 @@ export default async function MovieDetailPage({
   const movie = mapTmdbToMovie(data, mediaType);
   const regularSeasons = mediaType === "tv" ? getRegularSeasons(data) : [];
 
-  // ── Cargar entrada persistida desde Supabase ──
-  try {
-    const admin = createAdminClient();
-    const { data: mediaRow } = await admin
-      .from("media")
-      .select("id")
-      .eq("external_source", "tmdb")
-      .eq("external_id", id)
-      .maybeSingle();
+  const [entry, tvdbId] = await Promise.all([
+    loadUserEntry(id),
+    resolveTvdbId(data, id, mediaType),
+  ]);
 
-    if (mediaRow?.id) {
-      const { data: entry } = await admin
-        .from("user_media_entries")
-        .select("rating, is_favorite, status, created_at, finished_at")
-        .eq("media_id", mediaRow.id)
-        .eq("user_id", USER_ID)
-        .maybeSingle();
-
-      if (entry) {
-        movie.personalRating = entry.rating !== null && entry.rating !== undefined ? Number(entry.rating) : null;
-        movie.favorite = entry.is_favorite ?? false;
-        movie.watched = entry.status === "completed";
-        movie.pending = entry.status === "backlog";
-        movie.dateAdded = formatSimpleDate(entry.created_at);
-        movie.dateWatched = formatSimpleDate(entry.finished_at);
-      }
-    }
-  } catch {
-    // Si falla la carga de la entrada, se continúa con los valores por defecto.
-  }
-
-  let tvdbId: string | null = null;
-  if (mediaType === "tv" && data.external_ids?.tvdb_id) {
-    tvdbId = String(data.external_ids.tvdb_id);
-  } else {
-    try {
-      tvdbId = await getTvdbIdFromTmdb(id, mediaType);
-    } catch {}
+  if (entry) {
+    movie.personalRating = entry.rating !== null && entry.rating !== undefined ? Number(entry.rating) : null;
+    movie.favorite = entry.is_favorite ?? false;
+    movie.watched = entry.status === "completed";
+    movie.pending = entry.status === "backlog";
+    movie.dateAdded = formatSimpleDate(entry.created_at);
+    movie.dateWatched = formatSimpleDate(entry.finished_at);
   }
 
   const [
@@ -380,7 +390,6 @@ export default async function MovieDetailPage({
 
   const seasonRows = buildSeasonRows(regularSeasons, episodeRatingsBySeason, tmdbStatsBySeason);
 
-  // ── Duración media para series (TMDB + fallback TVDB) ──
   let seriesAvgRuntime: string | null = null;
   if (mediaType === "tv") {
     const tmdbMinutes = data.episode_run_time?.[0] ?? null;
@@ -389,14 +398,12 @@ export default async function MovieDetailPage({
     seriesAvgRuntime = finalMinutes ? formatRuntime(finalMinutes) : "N/D";
   }
 
-  // ── Red y estado para series ──
   const networkNames =
     mediaType === "tv" && data.networks
       ? data.networks.map((n: any) => n.name).join(", ")
       : null;
   const seriesStatus = mediaType === "tv" ? data.status : null;
 
-  // ── Construcción condicional de la ficha técnica ──
   const baseFields: { label: string; value: string }[] = [
     { label: "Director", value: movie.director },
     { label: "Guion", value: movie.writers.join(", ") },
@@ -483,8 +490,8 @@ export default async function MovieDetailPage({
                     glassThickness={30}
                     refractiveIndex={1.5}
                     refractionScale={1.5}
-                    specularOpacity={0.5}
-                    blur={1.5}
+                    specularOpacity={0.3}
+                    blur={1}
                     tintColor="rgb(40, 40, 40)"
                     tintOpacity={0.4}
                     className="!justify-center items-center px-3"
@@ -527,8 +534,8 @@ export default async function MovieDetailPage({
               glassThickness={50}
               refractiveIndex={1.5}
               refractionScale={1.5}
-              specularOpacity={0.5}
-              blur={1.5}
+              specularOpacity={0.3}
+              blur={1}
               tintColor="rgb(40, 40, 40)"
               tintOpacity={0.2}
               className="!p-0"

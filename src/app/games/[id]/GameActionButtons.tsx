@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { LiquidGlass } from "@/components/liquid-glass";
 import { saveGameEntry, updateFavorite } from "@/lib/actions/game-entry";
 import type { MediaStatus } from "@/types/media";
@@ -105,69 +105,123 @@ export default function GameActionButtons({
   const [watched, setWatched] = useState(initialWatched);
   const [pending, setPending] = useState(initialPending ?? false);
 
-  async function persistStatus(next: { watched: boolean; pending: boolean }) {
-    const status: MediaStatus = next.watched ? "completed" : "backlog";
-    const ratingToSave = next.watched ? rating : null;
+  const persistStatus = useCallback(
+    async (next: { watched: boolean; pending: boolean }) => {
+      const status: MediaStatus = next.watched ? "completed" : "backlog";
+      const ratingToSave = next.watched ? rating : null;
 
-    try {
-      await saveGameEntry({
-        igdbId,
-        title,
-        releaseDate,
-        coverUrl,
-        backdropUrl,
-        synopsis,
-        status,
-        rating: ratingToSave,
-      });
-    } catch (err) {
-      console.error("Failed to save game entry", err);
-    }
-  }
+      try {
+        await saveGameEntry({
+          igdbId,
+          title,
+          releaseDate,
+          coverUrl,
+          backdropUrl,
+          synopsis,
+          status,
+          rating: ratingToSave,
+        });
+      } catch (err) {
+        console.error("Failed to save game entry", err);
+      }
+    },
+    [igdbId, title, releaseDate, coverUrl, backdropUrl, synopsis, rating]
+  );
 
-  async function persistFavorite(next: boolean) {
-    try {
-      await updateFavorite(igdbId, next);
-    } catch (err) {
-      console.error("Failed to update favorite", err);
-    }
-  }
+  const persistFavorite = useCallback(
+    async (next: boolean) => {
+      try {
+        await updateFavorite(igdbId, next);
+      } catch (err) {
+        console.error("Failed to update favorite", err);
+      }
+    },
+    [igdbId]
+  );
 
-  function handleFavoriteClick() {
+  const handleFavoriteClick = useCallback(() => {
     const next = !favorite;
     setFavorite(next);
     persistFavorite(next);
-  }
+  }, [favorite, persistFavorite]);
 
-  function handleWatchedClick() {
+  // FIX: Ya no anidamos setState dentro de otro updater function.
+  // Calculamos los próximos valores primero (usando el estado actual del
+  // closure), actualizamos ambos estados, y SOLO DESPUÉS llamamos a
+  // persistStatus como efecto colateral normal del click handler.
+  const handleWatchedClick = useCallback(() => {
     const nextWatched = !watched;
     const nextPending = nextWatched ? false : pending;
+
     setWatched(nextWatched);
     setPending(nextPending);
     persistStatus({ watched: nextWatched, pending: nextPending });
-  }
+  }, [watched, pending, persistStatus]);
 
-  function handlePendingClick() {
+  const handlePendingClick = useCallback(() => {
     const nextPending = !pending;
     const nextWatched = nextPending ? false : watched;
+
     setPending(nextPending);
     setWatched(nextWatched);
     persistStatus({ watched: nextWatched, pending: nextPending });
-  }
+  }, [watched, pending, persistStatus]);
 
   const favoriteColor = favorite ? FAVORITE_TEXT_ACTIVE_RGB : FAVORITE_TEXT_INACTIVE_RGB;
   const watchedColor = watched ? WATCHED_TEXT_ACTIVE_RGB : WATCHED_TEXT_INACTIVE_RGB;
   const pendingColor = pending ? PENDING_TEXT_ACTIVE_RGB : PENDING_TEXT_INACTIVE_RGB;
 
-  const favoriteShadow = favorite
-    ? toGlowShadow(FAVORITE_TEXT_ACTIVE_RGB, FAVORITE_GLOW_BLUR_PX, FAVORITE_GLOW_ALPHA)
-    : "none";
-  const watchedShadow = watched
-    ? toGlowShadow(WATCHED_TEXT_ACTIVE_RGB, WATCHED_GLOW_BLUR_PX, WATCHED_GLOW_ALPHA)
-    : "none";
-  const pendingShadow = pending
-    ? toGlowShadow(PENDING_TEXT_ACTIVE_RGB, PENDING_GLOW_BLUR_PX, PENDING_GLOW_ALPHA)
-    : "none";
+  const favoriteShadow = useMemo(
+    () => (favorite ? toGlowShadow(FAVORITE_TEXT_ACTIVE_RGB, FAVORITE_GLOW_BLUR_PX, FAVORITE_GLOW_ALPHA) : "none"),
+    [favorite]
+  );
+  const watchedShadow = useMemo(
+    () => (watched ? toGlowShadow(WATCHED_TEXT_ACTIVE_RGB, WATCHED_GLOW_BLUR_PX, WATCHED_GLOW_ALPHA) : "none"),
+    [watched]
+  );
+  const pendingShadow = useMemo(
+    () => (pending ? toGlowShadow(PENDING_TEXT_ACTIVE_RGB, PENDING_GLOW_BLUR_PX, PENDING_GLOW_ALPHA) : "none"),
+    [pending]
+  );
+
+  const handleFavoriteMouseEnter = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      if (!favorite) e.currentTarget.style.color = FAVORITE_TEXT_HOVER_RGB;
+    },
+    [favorite]
+  );
+  const handleFavoriteMouseLeave = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      if (!favorite) e.currentTarget.style.color = FAVORITE_TEXT_INACTIVE_RGB;
+    },
+    [favorite]
+  );
+
+  const handleWatchedMouseEnter = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      if (!watched) e.currentTarget.style.color = WATCHED_TEXT_HOVER_RGB;
+    },
+    [watched]
+  );
+  const handleWatchedMouseLeave = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      if (!watched) e.currentTarget.style.color = WATCHED_TEXT_INACTIVE_RGB;
+    },
+    [watched]
+  );
+
+  const handlePendingMouseEnter = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      if (!pending) e.currentTarget.style.color = PENDING_TEXT_HOVER_RGB;
+    },
+    [pending]
+  );
+  const handlePendingMouseLeave = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      if (!pending) e.currentTarget.style.color = PENDING_TEXT_INACTIVE_RGB;
+    },
+    [pending]
+  );
 
   return (
     <>
@@ -207,12 +261,8 @@ export default function GameActionButtons({
               textShadow: favoriteShadow,
               transition: "color 150ms ease, text-shadow 250ms ease",
             }}
-            onMouseEnter={(e) => {
-              if (!favorite) e.currentTarget.style.color = FAVORITE_TEXT_HOVER_RGB;
-            }}
-            onMouseLeave={(e) => {
-              if (!favorite) e.currentTarget.style.color = FAVORITE_TEXT_INACTIVE_RGB;
-            }}
+            onMouseEnter={handleFavoriteMouseEnter}
+            onMouseLeave={handleFavoriteMouseLeave}
             className={`flex h-full w-full items-center justify-center gap-2 px-4 text-[13px] font-medium transition-colors ${
               favorite ? FAVORITE_RING_ACTIVE : FAVORITE_RING_INACTIVE
             }`}
@@ -259,12 +309,8 @@ export default function GameActionButtons({
               textShadow: watchedShadow,
               transition: "color 150ms ease, text-shadow 250ms ease",
             }}
-            onMouseEnter={(e) => {
-              if (!watched) e.currentTarget.style.color = WATCHED_TEXT_HOVER_RGB;
-            }}
-            onMouseLeave={(e) => {
-              if (!watched) e.currentTarget.style.color = WATCHED_TEXT_INACTIVE_RGB;
-            }}
+            onMouseEnter={handleWatchedMouseEnter}
+            onMouseLeave={handleWatchedMouseLeave}
             className={`flex h-full w-full items-center justify-center gap-2 px-4 text-[13px] font-medium transition-colors ${
               watched ? WATCHED_RING_ACTIVE : WATCHED_RING_INACTIVE
             }`}
@@ -311,12 +357,8 @@ export default function GameActionButtons({
               textShadow: pendingShadow,
               transition: "color 150ms ease, text-shadow 250ms ease",
             }}
-            onMouseEnter={(e) => {
-              if (!pending) e.currentTarget.style.color = PENDING_TEXT_HOVER_RGB;
-            }}
-            onMouseLeave={(e) => {
-              if (!pending) e.currentTarget.style.color = PENDING_TEXT_INACTIVE_RGB;
-            }}
+            onMouseEnter={handlePendingMouseEnter}
+            onMouseLeave={handlePendingMouseLeave}
             className={`flex h-full w-full items-center justify-center gap-2 px-4 text-[13px] font-medium transition-colors ${
               pending ? PENDING_RING_ACTIVE : PENDING_RING_INACTIVE
             }`}

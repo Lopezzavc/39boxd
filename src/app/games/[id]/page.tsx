@@ -134,17 +134,7 @@ function mapIgdbToGame(data: IgdbGame): Game {
   };
 }
 
-export default async function GameDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id } = await params;
-  const data = await getIgdbGameById(Number(id));
-  if (!data) notFound();
-
-  const game = mapIgdbToGame(data);
-
+async function loadUserEntry(id: string) {
   try {
     const admin = createAdminClient();
     const { data: mediaRow } = await admin
@@ -154,28 +144,46 @@ export default async function GameDetailPage({
       .eq("external_id", id)
       .maybeSingle();
 
-    if (mediaRow?.id) {
-      const { data: entry } = await admin
-        .from("user_media_entries")
-        .select("rating, is_favorite, status, created_at, finished_at")
-        .eq("media_id", mediaRow.id)
-        .eq("user_id", USER_ID)
-        .maybeSingle();
+    if (!mediaRow?.id) return null;
 
-      if (entry) {
-        game.personalRating = entry.rating !== null && entry.rating !== undefined ? Number(entry.rating) : null;
-        game.favorite = entry.is_favorite ?? false;
-        game.watched = entry.status === "completed";
-        game.pending = entry.status === "backlog";
-        game.dateAdded = formatSimpleDate(entry.created_at);
-        game.dateWatched = formatSimpleDate(entry.finished_at);
-      }
-    }
+    const { data: entry } = await admin
+      .from("user_media_entries")
+      .select("rating, is_favorite, status, created_at, finished_at")
+      .eq("media_id", mediaRow.id)
+      .eq("user_id", USER_ID)
+      .maybeSingle();
+
+    return entry ?? null;
   } catch {
-    // Si falla la carga de la entrada, se continúa con los valores por defecto.
+    return null;
   }
+}
 
-  const timeToBeat = await getIgdbTimeToBeat(Number(id)).catch(() => undefined);
+export default async function GameDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+
+  const [data, timeToBeat, entry] = await Promise.all([
+    getIgdbGameById(Number(id)),
+    getIgdbTimeToBeat(Number(id)).catch(() => undefined),
+    loadUserEntry(id),
+  ]);
+
+  if (!data) notFound();
+
+  const game = mapIgdbToGame(data);
+
+  if (entry) {
+    game.personalRating = entry.rating !== null && entry.rating !== undefined ? Number(entry.rating) : null;
+    game.favorite = entry.is_favorite ?? false;
+    game.watched = entry.status === "completed";
+    game.pending = entry.status === "backlog";
+    game.dateAdded = formatSimpleDate(entry.created_at);
+    game.dateWatched = formatSimpleDate(entry.finished_at);
+  }
 
   const timeToBeatItems = [
     { label: "Rápido", value: formatHours(timeToBeat?.hastily) },
@@ -232,7 +240,7 @@ export default async function GameDetailPage({
                     refractiveIndex={1.5}
                     refractionScale={1.5}
                     specularOpacity={0.3}
-                    blur={1.5}
+                    blur={1}
                     tintColor="rgb(40, 40, 40)"
                     tintOpacity={0.4}
                     className="!justify-center items-center px-3"
@@ -275,7 +283,7 @@ export default async function GameDetailPage({
               refractiveIndex={1.5}
               refractionScale={1.5}
               specularOpacity={0.3}
-              blur={1.5}
+              blur={1}
               tintColor="rgb(40, 40, 40)"
               tintOpacity={0.2}
               className="!p-0"
@@ -330,9 +338,9 @@ export default async function GameDetailPage({
                       refractiveIndex={1.5}
                       refractionScale={1.5}
                       specularOpacity={0.3}
-                      blur={1.5}
+                      blur={1}
                       tintColor="rgb(40, 40, 40)"
-                      tintOpacity={0.3}
+                      tintOpacity={0.2}
                       className="!p-0"
                     >
                       <div className="flex flex-col items-center justify-center gap-1 px-2 py-4 w-full">

@@ -1,24 +1,37 @@
 let cachedToken: string | null = null;
 let tokenExpiresAt = 0;
+let tokenInFlight: Promise<string> | null = null;
 
 export async function getTvdbToken(): Promise<string> {
   if (cachedToken && Date.now() < tokenExpiresAt) {
     return cachedToken;
   }
 
-  const res = await fetch("https://api4.thetvdb.com/v4/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ apikey: process.env.TVDB_API_KEY }),
-  });
+  if (tokenInFlight) {
+    return tokenInFlight;
+  }
 
-  if (!res.ok) throw new Error("TVDB login failed");
+  tokenInFlight = (async () => {
+    const res = await fetch("https://api4.thetvdb.com/v4/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ apikey: process.env.TVDB_API_KEY }),
+    });
 
-  const json = await res.json();
-  cachedToken = json.data.token as string;
-  tokenExpiresAt = Date.now() + 29 * 24 * 60 * 60 * 1000;
+    if (!res.ok) throw new Error("TVDB login failed");
 
-  return cachedToken;
+    const json = await res.json();
+    cachedToken = json.data.token as string;
+    tokenExpiresAt = Date.now() + 29 * 24 * 60 * 60 * 1000;
+
+    return cachedToken;
+  })();
+
+  try {
+    return await tokenInFlight;
+  } finally {
+    tokenInFlight = null;
+  }
 }
 
 export async function tvdbFetch(path: string) {
@@ -34,19 +47,31 @@ export async function tvdbFetch(path: string) {
 }
 
 let artworkTypeCache: Record<string, number> | null = null;
+let artworkTypeCacheInFlight: Promise<Record<string, number>> | null = null;
 
 async function getArtworkTypeId(
   recordType: string,
   slug: string
 ): Promise<number | null> {
   if (!artworkTypeCache) {
-    const json = await tvdbFetch("/artwork/types");
-    artworkTypeCache = {};
-    for (const t of json.data) {
-      artworkTypeCache[`${t.recordType}:${t.slug}`] = t.id;
+    if (!artworkTypeCacheInFlight) {
+      artworkTypeCacheInFlight = (async () => {
+        const json = await tvdbFetch("/artwork/types");
+        const map: Record<string, number> = {};
+        for (const t of json.data) {
+          map[`${t.recordType}:${t.slug}`] = t.id;
+        }
+        artworkTypeCache = map;
+        return map;
+      })();
+    }
+    try {
+      await artworkTypeCacheInFlight;
+    } finally {
+      artworkTypeCacheInFlight = null;
     }
   }
-  return artworkTypeCache[`${recordType}:${slug}`] ?? null;
+  return artworkTypeCache![`${recordType}:${slug}`] ?? null;
 }
 
 export async function getTvdbGallery(
@@ -93,7 +118,7 @@ export interface TvdbExtendedMetadata {
   timePeriod: string | null;
   boxOffice: string | null;
   boxOfficeUS: string | null;
-  averageRuntime: number | null;   // ← nuevo campo
+  averageRuntime: number | null;
 }
 
 export async function getTvdbExtendedMetadata(
@@ -142,7 +167,6 @@ export async function getTvdbExtendedMetadata(
       boxOfficeUS = boxOfficeUSRaw;
     }
 
-    // ── Extraer averageRuntime, si existe ──
     const averageRuntime: number | null =
       typeof data.averageRuntime === "number" ? data.averageRuntime : null;
 

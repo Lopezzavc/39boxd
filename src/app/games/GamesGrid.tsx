@@ -1,7 +1,7 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { LiquidGlass } from "@/components/liquid-glass";
@@ -78,9 +78,14 @@ function parseRgb(rgb: string): [number, number, number] {
   return [r ?? 0, g ?? 0, b ?? 0];
 }
 
+const ratingColorCache = new Map<number, string>();
+
 function getRatingColor(rating: number): string {
   const clamped = Math.min(10, Math.max(0, rating));
+  const cached = ratingColorCache.get(clamped);
+  if (cached) return cached;
 
+  let color = RATING_COLOR_STOPS[RATING_COLOR_STOPS.length - 1]!.rgb;
   for (let i = 0; i < RATING_COLOR_STOPS.length - 1; i++) {
     const start = RATING_COLOR_STOPS[i]!;
     const end = RATING_COLOR_STOPS[i + 1]!;
@@ -91,34 +96,22 @@ function getRatingColor(rating: number): string {
       const r = Math.round(sr + (er - sr) * t);
       const g = Math.round(sg + (eg - sg) * t);
       const b = Math.round(sb + (eb - sb) * t);
-      return `rgb(${r}, ${g}, ${b})`;
+      color = `rgb(${r}, ${g}, ${b})`;
+      break;
     }
   }
-
-  return RATING_COLOR_STOPS[RATING_COLOR_STOPS.length - 1]!.rgb;
+  ratingColorCache.set(clamped, color);
+  return color;
 }
 
-/**
- * Precarga en segundo plano una lista de URLs de imagen usando el cache
- * nativo del navegador (new Image()). Se usa para que, al hacer hover sobre
- * una card, el backdrop ya esté disponible en cache y no haya delay/flash al
- * cambiar de una card a otra.
- */
 function usePreloadImages(urls: (string | null)[]) {
   useEffect(() => {
     const uniqueUrls = Array.from(new Set(urls.filter((u): u is string => Boolean(u))));
-    const images = uniqueUrls.map((url) => {
+    uniqueUrls.forEach((url) => {
       const img = new window.Image();
       img.src = url;
-      return img;
     });
-    return () => {
-      images.forEach((img) => {
-        img.src = "";
-      });
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [urls.join("|")]);
+  }, [urls]);
 }
 
 function StarIcon({ className, style }: { className?: string; style?: CSSProperties }) {
@@ -213,9 +206,9 @@ function SortDropdown({
         refractiveIndex={1.5}
         refractionScale={1.5}
         specularOpacity={0.3}
-        blur={1.5}
+        blur={1}
         tintColor="rgb(40, 40, 40)"
-        tintOpacity={isOpen ? 0.65 : 0.5}
+        tintOpacity={isOpen ? 0.4 : 0.4}
         className="!justify-center items-center cursor-pointer"
       >
         <button
@@ -276,7 +269,7 @@ function SortDropdown({
   );
 }
 
-function GameCard({
+const GameCard = memo(function GameCard({
   game,
   index,
   showGradientOnHover,
@@ -288,7 +281,7 @@ function GameCard({
   index: number;
   showGradientOnHover: boolean;
   isHovered: boolean;
-  onEnter: () => void;
+  onEnter: (game: GameItem) => void;
   onLeave: () => void;
 }) {
   const showGradient = showGradientOnHover && isHovered;
@@ -297,7 +290,7 @@ function GameCard({
     <Link
       href={`/games/${game.externalId}`}
       className="group relative block"
-      onMouseEnter={onEnter}
+      onMouseEnter={() => onEnter(game)}
       onMouseLeave={onLeave}
     >
       <div
@@ -416,48 +409,74 @@ function GameCard({
       )}
     </Link>
   );
-}
+});
 
 export default function GamesGrid({ games }: { games: GameItem[] }) {
   const [hovered, setHovered] = useState<GameItem | null>(null);
   const [layerA, setLayerA] = useState<Layer | null>(null);
   const [layerB, setLayerB] = useState<Layer | null>(null);
   const [activeLayer, setActiveLayer] = useState<"a" | "b">("a");
+  const backdropRafRef = useRef<{ outer: number; inner: number } | null>(null);
 
-  usePreloadImages(useMemo(() => games.map((g) => g.backdropUrl), [games]));
+  const backdropUrls = useMemo(() => games.map((g) => g.backdropUrl), [games]);
+  usePreloadImages(backdropUrls);
 
-  function showBackdrop(url: string) {
-    if (activeLayer === "a") {
-      setLayerB({ url, visible: false });
-      setLayerA((prev) => (prev ? { ...prev, visible: false } : prev));
-      setActiveLayer("b");
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          setLayerB((prev) => (prev && prev.url === url ? { ...prev, visible: true } : prev));
-        });
-      });
-    } else {
-      setLayerA({ url, visible: false });
-      setLayerB((prev) => (prev ? { ...prev, visible: false } : prev));
-      setActiveLayer("a");
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          setLayerA((prev) => (prev && prev.url === url ? { ...prev, visible: true } : prev));
-        });
-      });
+  useEffect(() => {
+    return () => {
+      if (backdropRafRef.current) {
+        cancelAnimationFrame(backdropRafRef.current.outer);
+        cancelAnimationFrame(backdropRafRef.current.inner);
+      }
+    };
+  }, []);
+
+  const showBackdrop = useCallback((url: string) => {
+    if (backdropRafRef.current) {
+      cancelAnimationFrame(backdropRafRef.current.outer);
+      cancelAnimationFrame(backdropRafRef.current.inner);
+      backdropRafRef.current = null;
     }
-  }
 
-  function handleEnter(game: GameItem) {
-    setHovered(game);
-    if (game.backdropUrl) {
-      showBackdrop(game.backdropUrl);
-    }
-  }
+    setActiveLayer((current) => {
+      if (current === "a") {
+        setLayerB({ url, visible: false });
+        setLayerA((prev) => (prev ? { ...prev, visible: false } : prev));
+        const outer = requestAnimationFrame(() => {
+          const inner = requestAnimationFrame(() => {
+            setLayerB((prev) => (prev && prev.url === url ? { ...prev, visible: true } : prev));
+          });
+          backdropRafRef.current = { outer, inner };
+        });
+        backdropRafRef.current = { outer, inner: outer };
+        return "b";
+      } else {
+        setLayerA({ url, visible: false });
+        setLayerB((prev) => (prev ? { ...prev, visible: false } : prev));
+        const outer = requestAnimationFrame(() => {
+          const inner = requestAnimationFrame(() => {
+            setLayerA((prev) => (prev && prev.url === url ? { ...prev, visible: true } : prev));
+          });
+          backdropRafRef.current = { outer, inner };
+        });
+        backdropRafRef.current = { outer, inner: outer };
+        return "a";
+      }
+    });
+  }, []);
 
-  function handleLeave() {
+  const handleEnter = useCallback(
+    (game: GameItem) => {
+      setHovered(game);
+      if (game.backdropUrl) {
+        showBackdrop(game.backdropUrl);
+      }
+    },
+    [showBackdrop]
+  );
+
+  const handleLeave = useCallback(() => {
     setHovered(null);
-  }
+  }, []);
 
   const isVisible = Boolean(hovered?.backdropUrl);
 
@@ -474,7 +493,7 @@ export default function GamesGrid({ games }: { games: GameItem[] }) {
     return filtered;
   }, [games, sortOrder]);
 
-  const pendingGames = games.filter((g) => g.isPending);
+  const pendingGames = useMemo(() => games.filter((g) => g.isPending), [games]);
 
   return (
     <div className="relative">
@@ -528,7 +547,7 @@ export default function GamesGrid({ games }: { games: GameItem[] }) {
                 index={index}
                 showGradientOnHover
                 isHovered={hovered?.id === game.id}
-                onEnter={() => handleEnter(game)}
+                onEnter={handleEnter}
                 onLeave={handleLeave}
               />
             ))}
@@ -549,7 +568,7 @@ export default function GamesGrid({ games }: { games: GameItem[] }) {
                 index={index}
                 showGradientOnHover={false}
                 isHovered={hovered?.id === game.id}
-                onEnter={() => handleEnter(game)}
+                onEnter={handleEnter}
                 onLeave={handleLeave}
               />
             ))}

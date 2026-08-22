@@ -5,7 +5,10 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-export async function getTwitchToken(): Promise<string> {
+let memoryToken: { access_token: string; expires_at: number } | null = null;
+let inFlight: Promise<string> | null = null;
+
+async function fetchAndCacheToken(): Promise<string> {
   const { data: cached } = await supabase
     .from("igdb_token_cache")
     .select("access_token, expires_at")
@@ -13,6 +16,7 @@ export async function getTwitchToken(): Promise<string> {
     .maybeSingle();
 
   if (cached && cached.expires_at > Date.now()) {
+    memoryToken = cached;
     return cached.access_token;
   }
 
@@ -32,5 +36,22 @@ export async function getTwitchToken(): Promise<string> {
     .from("igdb_token_cache")
     .upsert({ id: 1, access_token: data.access_token, expires_at });
 
+  memoryToken = { access_token: data.access_token, expires_at };
   return data.access_token;
+}
+
+export async function getTwitchToken(): Promise<string> {
+  if (memoryToken && memoryToken.expires_at > Date.now()) {
+    return memoryToken.access_token;
+  }
+
+  if (inFlight) {
+    return inFlight;
+  }
+
+  inFlight = fetchAndCacheToken().finally(() => {
+    inFlight = null;
+  });
+
+  return inFlight;
 }

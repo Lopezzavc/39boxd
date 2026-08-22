@@ -75,8 +75,14 @@ function parseRgb(rgb: string): [number, number, number] {
   return [r ?? 0, g ?? 0, b ?? 0];
 }
 
+const ratingColorCache = new Map<number, string>();
+
 function getRatingColor(rating: number): string {
   const clamped = Math.min(10, Math.max(0, rating));
+  const cached = ratingColorCache.get(clamped);
+  if (cached) return cached;
+
+  let color = RATING_COLOR_STOPS[RATING_COLOR_STOPS.length - 1]!.rgb;
   for (let i = 0; i < RATING_COLOR_STOPS.length - 1; i++) {
     const start = RATING_COLOR_STOPS[i]!;
     const end = RATING_COLOR_STOPS[i + 1]!;
@@ -87,10 +93,12 @@ function getRatingColor(rating: number): string {
       const r = Math.round(sr + (er - sr) * t);
       const g = Math.round(sg + (eg - sg) * t);
       const b = Math.round(sb + (eb - sb) * t);
-      return `rgb(${r}, ${g}, ${b})`;
+      color = `rgb(${r}, ${g}, ${b})`;
+      break;
     }
   }
-  return RATING_COLOR_STOPS[RATING_COLOR_STOPS.length - 1]!.rgb;
+  ratingColorCache.set(clamped, color);
+  return color;
 }
 
 function formatRating(rating: number): string {
@@ -442,19 +450,15 @@ function MediaRow({
       updateThumb();
     });
 
-    const handleResize = () => {
+    const resizeObserver = new ResizeObserver(() => {
       updateFadeVisibility();
       updateThumb();
-    };
-
-    const resizeObserver = new ResizeObserver(handleResize);
+    });
     resizeObserver.observe(el);
-    window.addEventListener("resize", handleResize);
 
     return () => {
       cancelAnimationFrame(raf);
       resizeObserver.disconnect();
-      window.removeEventListener("resize", handleResize);
     };
   }, [updateFadeVisibility, updateThumb, items]);
 
@@ -572,8 +576,6 @@ function MediaRow({
   );
 }
 
-/* ── HeroCarousel: stack lateral estilo Apple TV ────────────────────── */
-
 const CAROUSEL_AUTOPLAY_MS = 6500;
 const CAROUSEL_EASE = "cubic-bezier(0.32, 0.72, 0, 1)";
 const CAROUSEL_DURATION_MS = 850;
@@ -625,16 +627,9 @@ function HeroStackCard({
   const backgroundUrl = item.backdropUrl ?? item.coverUrl;
   const { translateXPct, scale, blurPx, dim, z, visible } = geometry;
   const isAlbum = item.mediaType === "album";
- 
-  // Wraps only the content that must be refracted (image + fixed
-  // gradients). Deliberately does NOT include anything with an animated
-  // inline `transform`/`opacity` on itself — GlassContentClone's
-  // MutationObserver watches `attributes: true` on this subtree, so any
-  // node here whose `style` changes every animation frame would trigger a
-  // full `cloneNode(true)` re-clone every frame. The zoom-on-offset effect
-  // is applied one level up (see `zoomWrapperStyle` below), outside this ref.
+
   const backgroundRef = useRef<HTMLDivElement>(null);
- 
+
   const panelContent = (
     <div>
       <p className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: SUBTITLE_COLOR_RGB }}>
@@ -660,7 +655,7 @@ function HeroStackCard({
       )}
     </div>
   );
- 
+
   return (
     <div
       onClick={!isActive ? onSelect : undefined}
@@ -691,9 +686,6 @@ function HeroStackCard({
         aria-hidden={!isActive}
       >
         <div className="relative h-full w-full" style={{ backgroundColor: PLACEHOLDER_BG_RGB }}>
-          {/* Refractable layer: image + fixed gradients only, no animated
-              inline styles on any node inside. This is what backgroundRef
-              points at. */}
           <div ref={backgroundRef} className="absolute inset-0">
             {backgroundUrl && (
               <div
@@ -716,9 +708,7 @@ function HeroStackCard({
             <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/15 to-black/10" />
             <div className="absolute inset-0 bg-gradient-to-r from-black/55 via-transparent to-transparent" />
           </div>
- 
-          {/* Dim overlay: animated opacity, deliberately OUTSIDE backgroundRef
-              so its per-frame `style` mutations don't trigger re-clones. */}
+
           <div
             aria-hidden
             className="absolute inset-0 bg-black"
@@ -727,7 +717,7 @@ function HeroStackCard({
               transition: `opacity ${CAROUSEL_DURATION_MS}ms ${CAROUSEL_EASE}`,
             }}
           />
- 
+
           {isAlbum && item.coverUrl && (
             <div
               className="absolute bottom-6 left-6 h-28 w-28 overflow-hidden rounded-xl shadow-2xl ring-1 ring-white/10 transition-opacity sm:h-36 sm:w-36"
@@ -736,7 +726,7 @@ function HeroStackCard({
               <Image src={item.coverUrl} alt="" fill sizes="144px" className="object-cover" />
             </div>
           )}
- 
+
           <div
             className="absolute inset-x-6 bottom-6 sm:inset-x-8 sm:bottom-8"
             style={{
@@ -944,13 +934,18 @@ function Section({
     [railItems, railLimit, railSortByRating, mergeScreenTypes, splitScreenTypes, singleRow]
   );
 
-  const rows = singleRow
-    ? [{ key: "all", label: singleRowLabel ?? "", items: railLimit ? railItems.slice(0, railLimit) : railItems }]
-    : mergedGroups
-      ? mergedGroups.map((g) => ({ key: g.key, label: g.label, items: g.items }))
-      : splitGroups
-        ? splitGroups.map((g) => ({ key: g.key, label: g.label, items: g.items }))
-        : (plainGroups ?? []).map((g) => ({ key: g.type, label: GROUP_LABELS[g.type], items: g.items }));
+  const rows = useMemo(() => {
+    if (singleRow) {
+      return [{ key: "all", label: singleRowLabel ?? "", items: railLimit ? railItems.slice(0, railLimit) : railItems }];
+    }
+    if (mergedGroups) {
+      return mergedGroups.map((g) => ({ key: g.key, label: g.label, items: g.items }));
+    }
+    if (splitGroups) {
+      return splitGroups.map((g) => ({ key: g.key, label: g.label, items: g.items }));
+    }
+    return (plainGroups ?? []).map((g) => ({ key: g.type, label: GROUP_LABELS[g.type], items: g.items }));
+  }, [singleRow, singleRowLabel, railLimit, railItems, mergedGroups, splitGroups, plainGroups]);
 
   return (
     <section>

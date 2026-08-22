@@ -2,11 +2,10 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useRef, useState, useLayoutEffect } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { X } from "lucide-react";
-import { LiquidGlass } from "@/components/liquid-glass";
-import { Spring } from "@/lib/springUtils";
+import { LiquidGlass, Spring } from "@/components/liquid-glass";
 import { SearchModal } from "@/components/search/SearchModal";
 
 const categories = [
@@ -14,7 +13,6 @@ const categories = [
   { label: "Juegos", href: "/games" },
   { label: "Películas", href: "/movies" },
   { label: "Música", href: "/music" },
-  
 ];
 
 interface SearchResult {
@@ -31,30 +29,21 @@ interface GalleryEventDetail {
   total: number;
 }
 
-export function Header() {
-  const pathname = usePathname();
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const [searchQuery, setSearchQuery] = useState("");
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [searchCategory, setSearchCategory] = useState<"game" | "movie" | "music">("game");
-  const [results, setResults] = useState<SearchResult[]>([]);
-  const [loading, setLoading] = useState(false);
+type NavTarget = { left: number; top: number; width: number; height: number };
 
-  const [galleryState, setGalleryState] = useState<GalleryEventDetail>({
-    isOpen: false,
-    currentIndex: 0,
-    total: 0,
-  });
-
-  const navRef = useRef<HTMLDivElement>(null);
-  const outerRef = useRef<HTMLDivElement>(null);
-  const linkRefs = useRef<Record<string, HTMLAnchorElement | null>>({});
-  const debounceRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
-  const navOffsetRef = useRef({ left: 0, top: 0 });
-
-  // Nav-pill position spring — unrelated to LiquidGlass's own internal
-  // Spring physics; this just animates the little active-tab background.
+function NavPill({
+  navRef,
+  linkRefs,
+  activeHref,
+  navOffsetRef,
+  activeLabel,
+}: {
+  navRef: React.RefObject<HTMLDivElement | null>;
+  linkRefs: React.RefObject<Record<string, HTMLAnchorElement | null>>;
+  activeHref: string;
+  navOffsetRef: React.RefObject<{ left: number; top: number }>;
+  activeLabel: string;
+}) {
   const springsRef = useRef({
     left: new Spring(0, 260, 14),
     top: new Spring(0, 260, 14),
@@ -63,135 +52,9 @@ export function Header() {
   });
   const initializedRef = useRef(false);
   const rafRef = useRef<number | null>(null);
-
   const [, forceRender] = useState(0);
 
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent<GalleryEventDetail>).detail;
-      setGalleryState(detail);
-    };
-    document.addEventListener("gallery-state", handler);
-    return () => document.removeEventListener("gallery-state", handler);
-  }, []);
-
-  useEffect(() => {
-    const openSearch = searchParams.get("openSearch");
-    if (openSearch === "true") {
-      setIsSearchOpen(true);
-      const newUrl = window.location.pathname;
-      window.history.replaceState(null, "", newUrl);
-    }
-  }, [searchParams]);
-
-  useEffect(() => {
-    if (!isSearchOpen) return;
-
-    if (pathname?.startsWith("/games")) {
-      setSearchCategory("game");
-    } else if (pathname?.startsWith("/movies")) {
-      setSearchCategory("movie");
-    } else if (pathname?.startsWith("/music")) {
-      setSearchCategory("music");
-    } else {
-      handleCloseModal();
-    }
-  }, [pathname, isSearchOpen]);
-
-  const activeHref = (() => {
-    if (!pathname || pathname === "/" || pathname === "/home") return "/";
-    const match = categories.find(
-      (c) => c.href !== "/" && pathname.startsWith(c.href)
-    );
-    return match?.href ?? "/";
-  })();
-
-  const defaultCategory = pathname?.startsWith("/movies")
-    ? "movie"
-    : pathname?.startsWith("/music")
-    ? "music"
-    : pathname?.startsWith("/games")
-    ? "game"
-    : "game";
-
-  // Calcula el offset del nav respecto al contenedor exterior
-  useLayoutEffect(() => {
-    const updateOffset = () => {
-      const outer = outerRef.current;
-      const nav = navRef.current;
-      if (!outer || !nav) return;
-      const outerRect = outer.getBoundingClientRect();
-      const navRect = nav.getBoundingClientRect();
-      navOffsetRef.current = {
-        left: navRect.left - outerRect.left,
-        top: navRect.top - outerRect.top,
-      };
-    };
-    updateOffset();
-    window.addEventListener("resize", updateOffset);
-    return () => window.removeEventListener("resize", updateOffset);
-  }, [activeHref, pathname]);
-
-  const performSearch = useCallback(async () => {
-    if (!searchQuery.trim()) {
-      setResults([]);
-      return;
-    }
-
-    if (searchCategory === "music") {
-      setLoading(true);
-      try {
-        const res = await fetch(`/api/deezer-search?q=${encodeURIComponent(searchQuery)}`);
-        const data = await res.json();
-        setResults(data.results || []);
-      } catch (err) {
-        console.error(err);
-        setResults([]);
-      } finally {
-        setLoading(false);
-      }
-      return;
-    }
-
-    setLoading(true);
-    try {
-      if (searchCategory === "game") {
-        const res = await fetch(`/api/igdb-search?q=${encodeURIComponent(searchQuery)}`);
-        const data = await res.json();
-        const games = (data.results || data).map((item: any) => ({
-          id: item.id,
-          title: item.name,
-          image: item.cover?.url?.replace("t_thumb", "t_cover_big") || "",
-          type: "game" as const,
-        }));
-        setResults(games);
-      } else if (searchCategory === "movie") {
-        const res = await fetch(`/api/tmdb-search?q=${encodeURIComponent(searchQuery)}`);
-        const data = await res.json();
-        setResults(data.results || []);
-      }
-    } catch (err) {
-      console.error(err);
-      setResults([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [searchQuery, searchCategory]);
-
-  useEffect(() => {
-    if (!isSearchOpen) return;
-
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      performSearch();
-    }, 300);
-
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [searchQuery, searchCategory, isSearchOpen, performSearch]);
-
-  function getTargetForActive() {
+  const getTargetForActive = useCallback((): NavTarget | null => {
     const activeEl = linkRefs.current[activeHref];
     const navEl = navRef.current;
     if (!activeEl || !navEl) return null;
@@ -203,9 +66,9 @@ export function Header() {
       width: linkRect.width + 20,
       height: linkRect.height + 12,
     };
-  }
+  }, [activeHref, linkRefs, navRef]);
 
-  function startLoop() {
+  const startLoop = useCallback(() => {
     if (rafRef.current != null) return;
     let last = performance.now();
 
@@ -230,7 +93,7 @@ export function Header() {
     };
 
     rafRef.current = requestAnimationFrame(loop);
-  }
+  }, []);
 
   useEffect(() => {
     const target = getTargetForActive();
@@ -259,7 +122,216 @@ export function Header() {
         rafRef.current = null;
       }
     };
-  }, [activeHref]);
+  }, [activeHref, getTargetForActive, startLoop]);
+
+  const s = springsRef.current;
+
+  if (!initializedRef.current) return null;
+
+  return (
+    <>
+      <div
+        className="absolute pointer-events-none"
+        style={{
+          left: navOffsetRef.current.left + s.left.value,
+          top: navOffsetRef.current.top + s.top.value,
+          width: s.width.value,
+          height: s.height.value,
+          zIndex: 0,
+        }}
+      >
+        <span
+          className="absolute inset-0 flex items-center justify-center text-sm font-medium blur-[2px] opacity-0 text-neutral-900 dark:text-neutral-50 pointer-events-none select-none"
+          aria-hidden="true"
+        >
+          {activeLabel}
+        </span>
+      </div>
+
+      <div
+        className="absolute rounded-full bg-white/15 backdrop-blur-md dark:bg-white/10"
+        style={{
+          left: s.left.value,
+          top: s.top.value,
+          width: s.width.value,
+          height: s.height.value,
+          zIndex: 0,
+        }}
+      />
+    </>
+  );
+}
+
+export function Header() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchCategory, setSearchCategory] = useState<"game" | "movie" | "music">("game");
+  const [results, setResults] = useState<SearchResult[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const [galleryState, setGalleryState] = useState<GalleryEventDetail>({
+    isOpen: false,
+    currentIndex: 0,
+    total: 0,
+  });
+
+  const navRef = useRef<HTMLDivElement>(null);
+  const outerRef = useRef<HTMLDivElement>(null);
+  const linkRefs = useRef<Record<string, HTMLAnchorElement | null>>({});
+  const debounceRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const navOffsetRef = useRef({ left: 0, top: 0 });
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<GalleryEventDetail>).detail;
+      setGalleryState(detail);
+    };
+    document.addEventListener("gallery-state", handler);
+    return () => document.removeEventListener("gallery-state", handler);
+  }, []);
+
+  useEffect(() => {
+    const openSearch = searchParams.get("openSearch");
+    if (openSearch === "true") {
+      setIsSearchOpen(true);
+      const newUrl = window.location.pathname;
+      window.history.replaceState(null, "", newUrl);
+    }
+  }, [searchParams]);
+
+  const handleCloseModal = useCallback(() => {
+    setIsSearchOpen(false);
+    setSearchQuery("");
+    setResults([]);
+  }, []);
+
+  useEffect(() => {
+    if (!isSearchOpen) return;
+
+    if (pathname?.startsWith("/games")) {
+      setSearchCategory("game");
+    } else if (pathname?.startsWith("/movies")) {
+      setSearchCategory("movie");
+    } else if (pathname?.startsWith("/music")) {
+      setSearchCategory("music");
+    } else {
+      handleCloseModal();
+    }
+  }, [pathname, isSearchOpen, handleCloseModal]);
+
+  const activeHref = useMemo(() => {
+    if (!pathname || pathname === "/" || pathname === "/home") return "/";
+    const match = categories.find(
+      (c) => c.href !== "/" && pathname.startsWith(c.href)
+    );
+    return match?.href ?? "/";
+  }, [pathname]);
+
+  const defaultCategory = pathname?.startsWith("/movies")
+    ? "movie"
+    : pathname?.startsWith("/music")
+    ? "music"
+    : "game";
+
+  useLayoutEffect(() => {
+    const updateOffset = () => {
+      const outer = outerRef.current;
+      const nav = navRef.current;
+      if (!outer || !nav) return;
+      const outerRect = outer.getBoundingClientRect();
+      const navRect = nav.getBoundingClientRect();
+      navOffsetRef.current = {
+        left: navRect.left - outerRect.left,
+        top: navRect.top - outerRect.top,
+      };
+    };
+    updateOffset();
+    window.addEventListener("resize", updateOffset);
+    return () => window.removeEventListener("resize", updateOffset);
+  }, [activeHref, pathname]);
+
+  const performSearch = useCallback(async () => {
+    if (!searchQuery.trim()) {
+      setResults([]);
+      return;
+    }
+
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    if (searchCategory === "music") {
+      setLoading(true);
+      try {
+        const res = await fetch(`/api/deezer-search?q=${encodeURIComponent(searchQuery)}`, {
+          signal: controller.signal,
+        });
+        const data = await res.json();
+        if (!controller.signal.aborted) setResults(data.results || []);
+      } catch (err) {
+        if ((err as Error).name !== "AbortError") {
+          console.error(err);
+          setResults([]);
+        }
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+      return;
+    }
+
+    setLoading(true);
+    try {
+      if (searchCategory === "game") {
+        const res = await fetch(`/api/igdb-search?q=${encodeURIComponent(searchQuery)}`, {
+          signal: controller.signal,
+        });
+        const data = await res.json();
+        const games = (data.results || data).map((item: any) => ({
+          id: item.id,
+          title: item.name,
+          image: item.cover?.url?.replace("t_thumb", "t_cover_big") || "",
+          type: "game" as const,
+        }));
+        if (!controller.signal.aborted) setResults(games);
+      } else if (searchCategory === "movie") {
+        const res = await fetch(`/api/tmdb-search?q=${encodeURIComponent(searchQuery)}`, {
+          signal: controller.signal,
+        });
+        const data = await res.json();
+        if (!controller.signal.aborted) setResults(data.results || []);
+      }
+    } catch (err) {
+      if ((err as Error).name !== "AbortError") {
+        console.error(err);
+        setResults([]);
+      }
+    } finally {
+      if (!controller.signal.aborted) setLoading(false);
+    }
+  }, [searchQuery, searchCategory]);
+
+  useEffect(() => {
+    if (!isSearchOpen) return;
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      performSearch();
+    }, 300);
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [searchQuery, searchCategory, isSearchOpen, performSearch]);
+
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
 
   function handleInputClick() {
     if (
@@ -277,17 +349,10 @@ export function Header() {
     }
   }
 
-  function handleCloseModal() {
-    setIsSearchOpen(false);
-    setSearchQuery("");
-    setResults([]);
-  }
-
   function handleCategoryChange(val: string) {
     setSearchCategory(val as "game" | "movie" | "music");
   }
 
-  const s = springsRef.current;
   const { isOpen: isGalleryOpen, currentIndex, total } = galleryState;
 
   const activeLabel = categories.find((c) => c.href === activeHref)?.label ?? "";
@@ -297,33 +362,6 @@ export function Header() {
       <div className="sticky top-4 z-50 w-full">
         <div className="flex justify-center">
           <div className="relative inline-flex" ref={outerRef}>
-            {/* Blur text de la pestaña activa – detrás del LiquidGlass */}
-            {initializedRef.current && activeHref && (
-              <div
-                className="absolute pointer-events-none"
-                style={{
-                  left: navOffsetRef.current.left + s.left.value,
-                  top: navOffsetRef.current.top + s.top.value,
-                  width: s.width.value,
-                  height: s.height.value,
-                  zIndex: 0,
-                }}
-              >
-                <span
-                  className="absolute inset-0 flex items-center justify-center text-sm font-medium blur-[2px] opacity-0 text-neutral-900 dark:text-neutral-50 pointer-events-none select-none"
-                  aria-hidden="true"
-                >
-                  {activeLabel}
-                </span>
-              </div>
-            )}
-
-            {/*
-              Topbar: plain, non-draggable glass container. `draggable` is
-              simply omitted (defaults to false) and no `backgroundRef` is
-              passed — see the note at the bottom of this file about what
-              that means for non-Chromium fallback rendering.
-            */}
             <LiquidGlass
               width="fit-content"
               height={50}
@@ -334,9 +372,9 @@ export function Header() {
               refractiveIndex={1.5}
               refractionScale={1.5}
               specularOpacity={0.3}
-              blur={1.5}
+              blur={1}
               tintColor="rgb(40, 40, 40)"
-              tintOpacity={0.5}
+              tintOpacity={0.4}
               className="pl-6 pr-[9.3px]"
               saturation={1}
             >
@@ -354,19 +392,13 @@ export function Header() {
                   </div>
 
                   <nav ref={navRef} className="relative flex shrink-0 gap-6">
-                    {/* Pastilla de fondo (siempre dentro del vidrio) */}
-                    {initializedRef.current && (
-                      <div
-                        className="absolute rounded-full bg-white/15 backdrop-blur-md dark:bg-white/10"
-                        style={{
-                          left: s.left.value,
-                          top: s.top.value,
-                          width: s.width.value,
-                          height: s.height.value,
-                          zIndex: 0,
-                        }}
-                      />
-                    )}
+                    <NavPill
+                      navRef={navRef}
+                      linkRefs={linkRefs}
+                      activeHref={activeHref}
+                      navOffsetRef={navOffsetRef}
+                      activeLabel={activeLabel}
+                    />
 
                     {categories.map((c) => {
                       const active =
@@ -393,7 +425,7 @@ export function Header() {
                   </nav>
                 </div>
 
-                <div className="ml-12 w-56 shrink-0">
+                <div className="ml-7 w-56 shrink-0 ">
                   <Input
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
@@ -405,7 +437,6 @@ export function Header() {
               </div>
             </LiquidGlass>
 
-            {/* Contador de galería con blur detrás de su propio vidrio */}
             {isGalleryOpen && total > 0 && (
               <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2">
                 <div className="relative">

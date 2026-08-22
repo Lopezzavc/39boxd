@@ -13,9 +13,6 @@ const USER_ID = "00000000-0000-0000-0000-000000000000";
 
 const LABEL = "text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500";
 
-// Cantidad de blur (en px) aplicada al backdrop del álbum. Como se usa el
-// mismo cover escalado como fondo (sin una imagen de alta resolución
-// dedicada), el blur disimula el efecto de baja calidad al escalar.
 const BACKDROP_BLUR_PX = 5;
 
 type Album = {
@@ -136,17 +133,7 @@ function mapDeezerToAlbum(data: DeezerAlbum): Album {
   };
 }
 
-export default async function MusicDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id } = await params;
-  const data = await getDeezerAlbumById(Number(id));
-  if (!data) notFound();
-
-  const album = mapDeezerToAlbum(data);
-
+async function loadUserEntry(id: string) {
   try {
     const admin = createAdminClient();
     const { data: mediaRow } = await admin
@@ -156,25 +143,44 @@ export default async function MusicDetailPage({
       .eq("external_id", id)
       .maybeSingle();
 
-    if (mediaRow?.id) {
-      const { data: entry } = await admin
-        .from("user_media_entries")
-        .select("rating, is_favorite, status, created_at, finished_at")
-        .eq("media_id", mediaRow.id)
-        .eq("user_id", USER_ID)
-        .maybeSingle();
+    if (!mediaRow?.id) return null;
 
-      if (entry) {
-        album.personalRating = entry.rating !== null && entry.rating !== undefined ? Number(entry.rating) : null;
-        album.favorite = entry.is_favorite ?? false;
-        album.watched = entry.status === "completed";
-        album.pending = entry.status === "backlog";
-        album.dateAdded = formatSimpleDate(entry.created_at);
-        album.dateWatched = formatSimpleDate(entry.finished_at);
-      }
-    }
+    const { data: entry } = await admin
+      .from("user_media_entries")
+      .select("rating, is_favorite, status, created_at, finished_at")
+      .eq("media_id", mediaRow.id)
+      .eq("user_id", USER_ID)
+      .maybeSingle();
+
+    return entry ?? null;
   } catch {
-    // Si falla la carga de la entrada, se continúa con los valores por defecto.
+    return null;
+  }
+}
+
+export default async function MusicDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+
+  const [data, entry] = await Promise.all([
+    getDeezerAlbumById(Number(id)),
+    loadUserEntry(id),
+  ]);
+
+  if (!data) notFound();
+
+  const album = mapDeezerToAlbum(data);
+
+  if (entry) {
+    album.personalRating = entry.rating !== null && entry.rating !== undefined ? Number(entry.rating) : null;
+    album.favorite = entry.is_favorite ?? false;
+    album.watched = entry.status === "completed";
+    album.pending = entry.status === "backlog";
+    album.dateAdded = formatSimpleDate(entry.created_at);
+    album.dateWatched = formatSimpleDate(entry.finished_at);
   }
 
   const baseFields: { label: string; value: string }[] = [
@@ -232,8 +238,8 @@ export default async function MusicDetailPage({
                     glassThickness={30}
                     refractiveIndex={1.5}
                     refractionScale={1.5}
-                    specularOpacity={0.5}
-                    blur={1.5}
+                    specularOpacity={0.3}
+                    blur={1}
                     tintColor="rgb(40, 40, 40)"
                     tintOpacity={0.4}
                     className="!justify-center items-center px-3"
@@ -273,8 +279,8 @@ export default async function MusicDetailPage({
               glassThickness={50}
               refractiveIndex={1.5}
               refractionScale={1.5}
-              specularOpacity={0.5}
-              blur={1.5}
+              specularOpacity={0.3}
+              blur={1}
               tintColor="rgb(40, 40, 40)"
               tintOpacity={0.2}
               className="!p-0"

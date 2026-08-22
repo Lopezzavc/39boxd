@@ -1,7 +1,7 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { LiquidGlass } from "@/components/liquid-glass";
@@ -96,8 +96,13 @@ function parseRgb(rgb: string): [number, number, number] {
   return [r ?? 0, g ?? 0, b ?? 0];
 }
 
+const ratingColorCache = new Map<number, string>();
+
 function getRatingColor(rating: number): string {
   const clamped = Math.min(10, Math.max(0, rating));
+
+  const cached = ratingColorCache.get(clamped);
+  if (cached) return cached;
 
   for (let i = 0; i < RATING_COLOR_STOPS.length - 1; i++) {
     const start = RATING_COLOR_STOPS[i]!;
@@ -109,34 +114,31 @@ function getRatingColor(rating: number): string {
       const r = Math.round(sr + (er - sr) * t);
       const g = Math.round(sg + (eg - sg) * t);
       const b = Math.round(sb + (eb - sb) * t);
-      return `rgb(${r}, ${g}, ${b})`;
+      const color = `rgb(${r}, ${g}, ${b})`;
+      ratingColorCache.set(clamped, color);
+      return color;
     }
   }
 
-  return RATING_COLOR_STOPS[RATING_COLOR_STOPS.length - 1]!.rgb;
+  const fallback = RATING_COLOR_STOPS[RATING_COLOR_STOPS.length - 1]!.rgb;
+  ratingColorCache.set(clamped, fallback);
+  return fallback;
 }
 
-/**
- * Precarga en segundo plano una lista de URLs de imagen usando el cache
- * nativo del navegador (new Image()). Se usa para que, al hacer hover sobre
- * una card, el backdrop ya esté disponible en cache y no haya delay/flash al
- * cambiar de una card a otra.
- */
 function usePreloadImages(urls: (string | null)[]) {
+  const key = useMemo(
+    () => Array.from(new Set(urls.filter((u): u is string => Boolean(u)))).join("|"),
+    [urls]
+  );
+
   useEffect(() => {
-    const uniqueUrls = Array.from(new Set(urls.filter((u): u is string => Boolean(u))));
-    const images = uniqueUrls.map((url) => {
+    if (!key) return;
+    const uniqueUrls = key.split("|");
+    uniqueUrls.forEach((url) => {
       const img = new window.Image();
       img.src = url;
-      return img;
     });
-    return () => {
-      images.forEach((img) => {
-        img.src = "";
-      });
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [urls.join("|")]);
+  }, [key]);
 }
 
 function StarIcon({ className, style }: { className?: string; style?: CSSProperties }) {
@@ -219,6 +221,13 @@ function SortDropdown({
 
   const currentLabel = SORT_OPTIONS.find((o) => o.value === value)?.label ?? "";
 
+  const handleMouseEnter = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
+    e.currentTarget.style.backgroundColor = SORT_BG_HOVER_RGB;
+  }, []);
+  const handleMouseLeave = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
+    e.currentTarget.style.backgroundColor = "transparent";
+  }, []);
+
   return (
     <div ref={containerRef} className="relative">
       <LiquidGlass
@@ -277,12 +286,8 @@ function SortDropdown({
               }}
               className="flex w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left text-xs font-medium transition-colors"
               style={{ color: isActive ? SORT_ACCENT_RGB : SORT_TEXT_MUTED_RGB }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = SORT_BG_HOVER_RGB;
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = "transparent";
-              }}
+              onMouseEnter={handleMouseEnter}
+              onMouseLeave={handleMouseLeave}
             >
               {option.label}
               {isActive && <CheckIcon className="h-3.5 w-3.5" />}
@@ -315,6 +320,13 @@ function TypeFilterDropdown({
   }, []);
 
   const currentLabel = TYPE_FILTER_OPTIONS.find((o) => o.value === value)?.label ?? "";
+
+  const handleMouseEnter = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
+    e.currentTarget.style.backgroundColor = SORT_BG_HOVER_RGB;
+  }, []);
+  const handleMouseLeave = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
+    e.currentTarget.style.backgroundColor = "transparent";
+  }, []);
 
   return (
     <div ref={containerRef} className="relative">
@@ -374,12 +386,8 @@ function TypeFilterDropdown({
               }}
               className="flex w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left text-xs font-medium transition-colors"
               style={{ color: isActive ? SORT_ACCENT_RGB : SORT_TEXT_MUTED_RGB }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = SORT_BG_HOVER_RGB;
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = "transparent";
-              }}
+              onMouseEnter={handleMouseEnter}
+              onMouseLeave={handleMouseLeave}
             >
               {option.label}
               {isActive && <CheckIcon className="h-3.5 w-3.5" />}
@@ -391,7 +399,7 @@ function TypeFilterDropdown({
   );
 }
 
-function MovieCard({
+const MovieCard = ({
   movie,
   index,
   showGradientOnHover,
@@ -405,7 +413,7 @@ function MovieCard({
   isHovered: boolean;
   onEnter: () => void;
   onLeave: () => void;
-}) {
+}) => {
   const showGradient = showGradientOnHover && isHovered;
 
   return (
@@ -531,48 +539,68 @@ function MovieCard({
       )}
     </Link>
   );
-}
+};
 
 export default function MoviesGrid({ movies }: { movies: MovieItem[] }) {
   const [hovered, setHovered] = useState<MovieItem | null>(null);
   const [layerA, setLayerA] = useState<Layer | null>(null);
   const [layerB, setLayerB] = useState<Layer | null>(null);
   const [activeLayer, setActiveLayer] = useState<"a" | "b">("a");
+  const pendingRafIds = useRef<number[]>([]);
 
-  usePreloadImages(useMemo(() => movies.map((m) => m.backdropUrl), [movies]));
+  const backdropUrls = useMemo(() => movies.map((m) => m.backdropUrl), [movies]);
+  usePreloadImages(backdropUrls);
 
-  function showBackdrop(url: string) {
-    if (activeLayer === "a") {
-      setLayerB({ url, visible: false });
-      setLayerA((prev) => (prev ? { ...prev, visible: false } : prev));
-      setActiveLayer("b");
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          setLayerB((prev) => (prev && prev.url === url ? { ...prev, visible: true } : prev));
+  useEffect(() => {
+    return () => {
+      pendingRafIds.current.forEach((id) => cancelAnimationFrame(id));
+    };
+  }, []);
+
+  const showBackdrop = useCallback((url: string) => {
+    pendingRafIds.current.forEach((id) => cancelAnimationFrame(id));
+    pendingRafIds.current = [];
+
+    setActiveLayer((current) => {
+      if (current === "a") {
+        setLayerB({ url, visible: false });
+        setLayerA((prev) => (prev ? { ...prev, visible: false } : prev));
+        const raf1 = requestAnimationFrame(() => {
+          const raf2 = requestAnimationFrame(() => {
+            setLayerB((prev) => (prev && prev.url === url ? { ...prev, visible: true } : prev));
+          });
+          pendingRafIds.current.push(raf2);
         });
-      });
-    } else {
-      setLayerA({ url, visible: false });
-      setLayerB((prev) => (prev ? { ...prev, visible: false } : prev));
-      setActiveLayer("a");
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          setLayerA((prev) => (prev && prev.url === url ? { ...prev, visible: true } : prev));
+        pendingRafIds.current.push(raf1);
+        return "b";
+      } else {
+        setLayerA({ url, visible: false });
+        setLayerB((prev) => (prev ? { ...prev, visible: false } : prev));
+        const raf1 = requestAnimationFrame(() => {
+          const raf2 = requestAnimationFrame(() => {
+            setLayerA((prev) => (prev && prev.url === url ? { ...prev, visible: true } : prev));
+          });
+          pendingRafIds.current.push(raf2);
         });
-      });
-    }
-  }
+        pendingRafIds.current.push(raf1);
+        return "a";
+      }
+    });
+  }, []);
 
-  function handleEnter(movie: MovieItem) {
-    setHovered(movie);
-    if (movie.backdropUrl) {
-      showBackdrop(movie.backdropUrl);
-    }
-  }
+  const handleEnter = useCallback(
+    (movie: MovieItem) => {
+      setHovered(movie);
+      if (movie.backdropUrl) {
+        showBackdrop(movie.backdropUrl);
+      }
+    },
+    [showBackdrop]
+  );
 
-  function handleLeave() {
+  const handleLeave = useCallback(() => {
     setHovered(null);
-  }
+  }, []);
 
   const isVisible = Boolean(hovered?.backdropUrl);
 
@@ -596,6 +624,8 @@ export default function MoviesGrid({ movies }: { movies: MovieItem[] }) {
     () => movies.filter((m) => m.isPending && matchesTypeFilter(m.contentType, typeFilter)),
     [movies, typeFilter]
   );
+
+  const hasPending = useMemo(() => movies.some((m) => m.isPending), [movies]);
 
   return (
     <div className="relative">
@@ -664,7 +694,7 @@ export default function MoviesGrid({ movies }: { movies: MovieItem[] }) {
         )}
       </section>
 
-      {movies.some((m) => m.isPending) && (
+      {hasPending && (
         <section>
           <h2 className={SECTION_LABEL} style={{ color: SECTION_LABEL_COLOR_RGB }}>
             Pendientes

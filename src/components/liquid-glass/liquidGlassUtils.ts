@@ -1,23 +1,3 @@
-/**
- * liquidGlassUtils.ts
- *
- * Math + physics primitives ported 1:1 from the original standalone
- * `liquid_glass_unified.html` demo (SurfaceEquations, Spring,
- * calculateDisplacementMap1D/2D, calculateSpecularHighlight,
- * imageDataToDataURL). This file must remain numerically identical to the
- * original for the same inputs — every function here has been checked
- * line-by-line against the source demo.
- *
- * Defensive validation (`safeNumber`, `clampFinite`, etc.) and a small
- * memoization cache for generated maps (`computeGlassMaps`) were added on
- * top so the React port can tolerate extreme/invalid props and avoid
- * regenerating identical maps across multiple component instances.
- */
-
-// ─────────────────────────────────────────────────────────────────────────
-// Surface equations (verbatim from the original demo)
-// ─────────────────────────────────────────────────────────────────────────
-
 export const SurfaceEquations = {
   convex_circle: (x: number) => Math.sqrt(1 - Math.pow(1 - x, 2)),
   convex_squircle: (x: number) => Math.pow(1 - Math.pow(1 - x, 4), 1 / 4),
@@ -33,10 +13,6 @@ export const SurfaceEquations = {
 export type SurfaceType = keyof typeof SurfaceEquations;
 
 export const SURFACE_TYPES: SurfaceType[] = ["convex_circle", "convex_squircle", "concave", "lip"];
-
-// ─────────────────────────────────────────────────────────────────────────
-// Spring physics (verbatim from the original demo's `class Spring`)
-// ─────────────────────────────────────────────────────────────────────────
 
 export class Spring {
   value: number;
@@ -69,10 +45,6 @@ export class Spring {
     return Math.abs(this.target - this.value) < 0.001 && Math.abs(this.velocity) < 0.001;
   }
 
-  /** Not present in the original (which just re-assigned `.value`/`.target`
-   * on the object directly in `init()`), but needed to reset a spring
-   * safely from React (e.g. on remount / prop change) without leaving a
-   * stale velocity around. */
   reset(value: number) {
     this.value = value;
     this.target = value;
@@ -80,22 +52,15 @@ export class Spring {
   }
 }
 
-/** Runs `update()` on every spring in a map/object and reports whether all
- * of them are settled — mirrors `Object.values(springs).every(s => s.isSettled())`
- * used throughout the original demo's animation loops. */
 export function updateSprings<T extends Record<string, Spring>>(springs: T, dt: number) {
   const values = {} as { [K in keyof T]: number };
   let allSettled = true;
-  for (const key in springs) {
+  for (const key of Object.keys(springs) as (keyof T)[]) {
     values[key] = springs[key].update(dt);
     if (!springs[key].isSettled()) allSettled = false;
   }
   return { values, allSettled };
 }
-
-// ─────────────────────────────────────────────────────────────────────────
-// Displacement / specular map generation (verbatim math from the original)
-// ─────────────────────────────────────────────────────────────────────────
 
 export function calculateDisplacementMap1D(
   glassThickness: number,
@@ -254,23 +219,12 @@ export function imageDataToDataURL(imageData: ImageData) {
   return canvas.toDataURL();
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// Defensive numeric helpers
-// ─────────────────────────────────────────────────────────────────────────
-
-/** Coerces to a finite number, falling back to `fallback` for NaN/Infinity/
- * non-numbers, and clamps into [min, max]. Used everywhere a prop is fed
- * into the math above so a bad prop can never produce a NaN `scale` and
- * corrupt the SVG filter. */
 export function safeNumber(value: unknown, fallback: number, min = -Infinity, max = Infinity): number {
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n)) return fallback;
   return Math.min(max, Math.max(min, n));
 }
 
-/** Physically valid refractive index: must be finite and > 0. Values below
- * 1 are technically valid (going from denser to less dense medium) so we
- * only guard against <=0, NaN and Infinity. */
 export function safeRefractiveIndex(value: unknown, fallback = 1.5): number {
   const n = safeNumber(value, fallback, 0.0001, 100);
   return n <= 0 ? fallback : n;
@@ -285,16 +239,9 @@ export function maxAbs(values: number[]): number {
   return max;
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// Map generation with validation + memoization cache
-// ─────────────────────────────────────────────────────────────────────────
-
 export interface GlassMapParams {
   width: number;
   height: number;
-  /** Effective radius — MUST already be clamped to min(radius, width/2, height/2)
-   * by the caller so the geometry used to build the map matches the CSS
-   * border-radius exactly (see LiquidGlass.tsx `getEffectiveRadius`). */
   radius: number;
   bezelWidth: number;
   glassThickness: number;
@@ -306,9 +253,6 @@ export interface GlassMapParams {
 export interface GlassMapResult {
   displacementDataURL: string;
   specularDataURL: string;
-  /** Max absolute value of the 1D precomputed displacement curve — used to
-   * normalize the map and to derive the dynamic `feDisplacementMap` scale
-   * (`maximumDisplacement * refractionScale`). */
   maximumDisplacement: number;
 }
 
@@ -328,13 +272,6 @@ function mapCacheKey(p: Required<GlassMapParams>): string {
   ].join("|");
 }
 
-/**
- * Validates params, builds (or reuses a cached copy of) the displacement +
- * specular maps for a given geometry, and returns their data URLs plus the
- * normalization constant. Returns `null` when called outside the browser
- * (SSR) or when the target size is degenerate (0×0) — callers should skip
- * updating the filter in that case rather than writing an invalid map.
- */
 export function computeGlassMaps(params: GlassMapParams): GlassMapResult | null {
   if (typeof document === "undefined") return null;
 
@@ -385,7 +322,6 @@ export function computeGlassMaps(params: GlassMapParams): GlassMapResult | null 
   return result;
 }
 
-/** Safe scale value for `feDisplacementMap` — never NaN/Infinity. */
 export function safeDisplacementScale(maximumDisplacement: number, refractionScale: number): number {
   const md = safeNumber(maximumDisplacement, 1, 0, 100000);
   const rs = safeNumber(refractionScale, 1, -1000, 1000);

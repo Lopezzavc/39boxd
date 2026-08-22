@@ -122,8 +122,8 @@ export default function MovieGallery({ images }: { images: string[] }) {
                   glassThickness={30}
                   refractiveIndex={1.5}
                   refractionScale={1.5}
-                  specularOpacity={0.5}
-                  blur={1.5}
+                  specularOpacity={0.3}
+                  blur={1}
                   tintColor="rgb(40, 40, 40)"
                   tintOpacity={0.5}
                   active={thumbnailHover}
@@ -162,8 +162,8 @@ export default function MovieGallery({ images }: { images: string[] }) {
                 glassThickness={44}
                 refractiveIndex={1.5}
                 refractionScale={1.5}
-                specularOpacity={0.5}
-                blur={1.5}
+                specularOpacity={0.3}
+                blur={1}
                 tintColor="rgb(40, 40, 40)"
                 tintOpacity={0.5}
                 className="!justify-center items-center cursor-pointer"
@@ -206,8 +206,8 @@ export default function MovieGallery({ images }: { images: string[] }) {
                 glassThickness={44}
                 refractiveIndex={1.5}
                 refractionScale={1.5}
-                specularOpacity={0.5}
-                blur={1.5}
+                specularOpacity={0.3}
+                blur={1}
                 tintColor="rgb(40, 40, 40)"
                 tintOpacity={0.5}
                 className="!justify-center items-center cursor-pointer"

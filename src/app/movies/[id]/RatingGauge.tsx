@@ -91,7 +91,8 @@ export default function RatingGauge({ initialValue = 0.0, onChange, onSave, size
       { max: 7.0, label: "Buena" },
       { max: 8.0, label: "Muy buena" },
       { max: 9.0, label: "Excelente" },
-      { max: 10.0, label: "Obra maestra" },
+      { max: 9.9, label: "Obra maestra" },
+      { max: 10.0, label: "Peak histórico" },
     ];
 
     function labelFor(v: number) {
