@@ -1,6 +1,10 @@
 ﻿import { createAdminClient } from "@/lib/supabase/admin";
 import MoviesGrid from "./MoviesGrid";
 
+export const metadata = {
+  title: "DATA - Películas y Series",
+};
+
 const USER_ID = "00000000-0000-0000-0000-000000000000";
 
 export default async function MoviesPage() {

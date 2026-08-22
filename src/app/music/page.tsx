@@ -1,6 +1,10 @@
 ﻿import { createAdminClient } from "@/lib/supabase/admin";
 import MusicGrid from "./MusicGrid";
 
+export const metadata = {
+  title: "DATA - Música",
+};
+
 const USER_ID = "00000000-0000-0000-0000-000000000000";
 
 export default async function MusicPage() {

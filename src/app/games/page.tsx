@@ -1,6 +1,10 @@
 ﻿import { createAdminClient } from "@/lib/supabase/admin";
 import GamesGrid from "./GamesGrid";
 
+export const metadata = {
+  title: "DATA - Juegos",
+};
+
 const USER_ID = "00000000-0000-0000-0000-000000000000";
 
 export default async function GamesPage() {

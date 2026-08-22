@@ -19,6 +19,19 @@ import RatingGauge from "./RatingGauge";
 import MovieActionButtons from "./MovieActionButtons";
 import { getContentType } from "@/lib/tmdb-content-type";
 
+export async function generateMetadata({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ type?: string }> }) {
+  const { id } = await params;
+  const { type } = await searchParams;
+  const mediaType: "movie" | "tv" = type === "tv" ? "tv" : "movie";
+  const data = await fetchTmdbDetail(id, mediaType);
+  if (!data) {
+    return { title: "Contenido no encontrado - DATA" };
+  }
+  const isTv = mediaType === "tv";
+  const title: string = isTv ? data.name : data.title;
+  return { title: `${title} - DATA` };
+}
+
 const USER_ID = "00000000-0000-0000-0000-000000000000";
 
 function IconStar({ filled }: { filled: boolean }) {

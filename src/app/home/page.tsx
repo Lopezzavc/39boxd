@@ -1,6 +1,10 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import HomeSections from "./HomeSections";
 
+export const metadata = {
+  title: "DATA - Home",
+};
+
 const USER_ID = "00000000-0000-0000-0000-000000000000";
 
 export type HomeMediaType = "game" | "movie" | "series" | "album";

@@ -9,6 +9,16 @@ import RatingGauge from "../../movies/[id]/RatingGauge";
 import TrackList from "./TrackList";
 import MusicActionButtons from "./MusicActionButtons";
 
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const data = await getDeezerAlbumById(Number(id));
+  if (!data) {
+    return { title: "Álbum no encontrado - DATA" };
+  }
+  const title = data.title || "Sin título";
+  return { title: `${title} - DATA` };
+}
+
 const USER_ID = "00000000-0000-0000-0000-000000000000";
 
 const LABEL = "text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500";

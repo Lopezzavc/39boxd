@@ -9,6 +9,16 @@ import KeycapButton from "./IgdbKeycapButton";
 import RatingGauge from "../../movies/[id]/RatingGauge";
 import GameActionButtons from "./GameActionButtons";
 
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const data = await getIgdbGameById(Number(id));
+  if (!data) {
+    return { title: "Juego no encontrado - DATA" };
+  }
+  const title = data.name || "Sin título";
+  return { title: `${title} - DATA` };
+}
+
 const USER_ID = "00000000-0000-0000-0000-000000000000";
 
 const LABEL = "text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500";
